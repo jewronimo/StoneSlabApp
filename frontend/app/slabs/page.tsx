@@ -10,8 +10,11 @@ type Slab = {
   material_name?: string;
   finish?: string;
   height?: string;
+  height_value?: number | null;
   width?: string;
+  width_value?: number | null;
   thickness?: string;
+  thickness_value?: number | null;
   warehouse_group?: string;
   status?: string;
   customer_name?: string | null;
@@ -24,42 +27,6 @@ type Slab = {
   image_url?: string | null;
   match_group_code?: string | null;
 };
-
-function parseDimensionToNumber(value?: string | null): number | null {
-  if (!value) return null;
-
-  const cleaned = value.trim().toLowerCase();
-
-  const mixedFractionMatch = cleaned.match(
-    /^(\d+(?:\.\d+)?)\s+(\d+)\/(\d+)(?:\D.*)?$/
-  );
-  if (mixedFractionMatch) {
-    const whole = parseFloat(mixedFractionMatch[1]);
-    const numerator = parseFloat(mixedFractionMatch[2]);
-    const denominator = parseFloat(mixedFractionMatch[3]);
-
-    if (denominator !== 0) {
-      return whole + numerator / denominator;
-    }
-  }
-
-  const fractionMatch = cleaned.match(/^(\d+)\/(\d+)(?:\D.*)?$/);
-  if (fractionMatch) {
-    const numerator = parseFloat(fractionMatch[1]);
-    const denominator = parseFloat(fractionMatch[2]);
-
-    if (denominator !== 0) {
-      return numerator / denominator;
-    }
-  }
-
-  const firstNumberMatch = cleaned.match(/-?\d+(?:\.\d+)?/);
-  if (firstNumberMatch) {
-    return parseFloat(firstNumberMatch[0]);
-  }
-
-  return null;
-}
 
 export default function SlabsPage() {
   const [slabs, setSlabs] = useState<Slab[]>([]);
@@ -124,10 +91,24 @@ export default function SlabsPage() {
       setError('');
 
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/slabs?include_inactive=${showInactive}`,
-          { cache: 'no-store' }
-        );
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+        if (!apiBaseUrl) {
+          throw new Error('NEXT_PUBLIC_API_BASE_URL is not configured');
+        }
+
+        const params = new URLSearchParams();
+        params.set('include_inactive', String(showInactive));
+
+        if (statusFilter) params.set('status', statusFilter);
+        if (warehouseFilter) params.set('warehouse_group', warehouseFilter);
+        if (minHeight) params.set('min_height', minHeight);
+        if (minWidth) params.set('min_width', minWidth);
+        if (minThickness) params.set('min_thickness', minThickness);
+
+        const res = await fetch(`${apiBaseUrl}/slabs?${params.toString()}`, {
+          cache: 'no-store',
+        });
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -149,7 +130,7 @@ export default function SlabsPage() {
     };
 
     fetchSlabs();
-  }, [showInactive]);
+  }, [showInactive, statusFilter, warehouseFilter, minHeight, minWidth, minThickness]);
 
   const handleLogout = () => {
     localStorage.removeItem('loggedIn');
@@ -206,10 +187,6 @@ export default function SlabsPage() {
   }, [slabs]);
 
   const filteredSlabs = useMemo(() => {
-    const minHeightValue = minHeight ? parseFloat(minHeight) : null;
-    const minWidthValue = minWidth ? parseFloat(minWidth) : null;
-    const minThicknessValue = minThickness ? parseFloat(minThickness) : null;
-
     return slabs.filter((slab) => {
       const searchableText = [
         slab.material_name,
@@ -241,41 +218,11 @@ export default function SlabsPage() {
 
       const matchesFinish = finishFilter ? slab.finish === finishFilter : true;
 
-      const matchesStatus = statusFilter ? slab.status === statusFilter : true;
-
-      const matchesWarehouse = warehouseFilter
-        ? slab.warehouse_group === warehouseFilter
-        : true;
-
-      const slabHeight = parseDimensionToNumber(slab.height);
-      const slabWidth = parseDimensionToNumber(slab.width);
-      const slabThickness = parseDimensionToNumber(slab.thickness);
-
-      const matchesMinHeight =
-        minHeightValue !== null
-          ? slabHeight !== null && slabHeight >= minHeightValue
-          : true;
-
-      const matchesMinWidth =
-        minWidthValue !== null
-          ? slabWidth !== null && slabWidth >= minWidthValue
-          : true;
-
-      const matchesMinThickness =
-        minThicknessValue !== null
-          ? slabThickness !== null && slabThickness >= minThicknessValue
-          : true;
-
       return (
         matchesSearch &&
         matchesSecondarySearch &&
         matchesMaterial &&
-        matchesFinish &&
-        matchesStatus &&
-        matchesWarehouse &&
-        matchesMinHeight &&
-        matchesMinWidth &&
-        matchesMinThickness
+        matchesFinish
       );
     });
   }, [
@@ -285,11 +232,6 @@ export default function SlabsPage() {
     showSecondarySearch,
     materialFilter,
     finishFilter,
-    statusFilter,
-    warehouseFilter,
-    minHeight,
-    minWidth,
-    minThickness,
   ]);
 
   return (

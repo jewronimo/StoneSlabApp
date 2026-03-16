@@ -288,9 +288,9 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "material_name": slab.material_name,
         "finish": slab.finish,
         "height": slab.height,
-        "height_value": slab.height_value,
+        "height_value": float(slab.height_value) if slab.height_value is not None else None,
         "width": slab.width,
-        "width_value": slab.width_value,
+        "width_value": float(slab.width_value) if slab.width_value is not None else None,
         "thickness": slab.thickness,
         "thickness_value": slab.thickness_value,
         "warehouse_group": slab.warehouse_group,
@@ -523,6 +523,12 @@ def list_slabs(
     include_inactive: bool = False,
     status: str | None = None,
     warehouse_group: str | None = None,
+    min_height: float | None = None,
+    max_height: float | None = None,
+    min_width: float | None = None,
+    max_width: float | None = None,
+    min_thickness: float | None = None,
+    max_thickness: float | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(Slab)
@@ -543,9 +549,39 @@ def list_slabs(
         warehouse_group_clean = validate_warehouse_group(warehouse_group)
         query = query.filter(Slab.warehouse_group == warehouse_group_clean)
 
-    slabs = query.order_by(Slab.id.asc()).all()
-    return [serialize_slab(slab, request) for slab in slabs]
+    if min_height is not None:
+        query = query.filter(Slab.height_value >= min_height)
+    if max_height is not None:
+        query = query.filter(Slab.height_value <= max_height)
 
+    if min_width is not None:
+        query = query.filter(Slab.width_value >= min_width)
+    if max_width is not None:
+        query = query.filter(Slab.width_value <= max_width)
+
+    if min_thickness is not None:
+        query = query.filter(Slab.thickness_value >= min_thickness)
+    if max_thickness is not None:
+        query = query.filter(Slab.thickness_value <= max_thickness)
+
+    is_default_load = (
+        include_inactive is False
+        and status is None
+        and warehouse_group is None
+        and min_height is None
+        and max_height is None
+        and min_width is None
+        and max_width is None
+        and min_thickness is None
+        and max_thickness is None
+    )
+
+    if is_default_load:
+        slabs = query.order_by(Slab.id.desc()).limit(20).all()
+    else:
+        slabs = query.order_by(Slab.id.desc()).all()
+
+    return [serialize_slab(slab, request) for slab in slabs]
 
 @app.delete("/slabs/{slab_code}")
 def delete_slab(slab_code: str, db: Session = Depends(get_db)):
