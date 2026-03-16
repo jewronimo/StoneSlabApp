@@ -23,6 +23,9 @@ type Slab = {
   updated_at?: string;
   image_url?: string | null;
   match_group_code?: string | null;
+  price_per_sqft?: number | null;
+  square_feet?: number | null;
+  total_price?: number | null;
 };
 
 const normalizeFinish = (value?: string) => {
@@ -43,8 +46,88 @@ const normalizeSlab = (data: Slab): Slab => {
   };
 };
 
+const formatDateTimeRounded = (value?: string | null) => {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const rounded = new Date(Math.round(date.getTime() / 60000) * 60000);
+
+  return rounded.toLocaleString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
 const sanitizeDimensionInput = (value: string) => {
   return value.replace(/[^\d./\s]/g, '').replace(/\s+/g, ' ').trimStart();
+};
+
+const parseDimensionToNumber = (value?: string) => {
+  if (!value) return null;
+
+  const cleaned = value.trim();
+
+  const mixedFractionMatch = cleaned.match(
+    /^(\d+(?:\.\d+)?)\s+(\d+)\/(\d+)$/
+  );
+  if (mixedFractionMatch) {
+    const whole = Number(mixedFractionMatch[1]);
+    const numerator = Number(mixedFractionMatch[2]);
+    const denominator = Number(mixedFractionMatch[3]);
+
+    if (denominator !== 0) {
+      return whole + numerator / denominator;
+    }
+  }
+
+  const fractionMatch = cleaned.match(/^(\d+)\/(\d+)$/);
+  if (fractionMatch) {
+    const numerator = Number(fractionMatch[1]);
+    const denominator = Number(fractionMatch[2]);
+
+    if (denominator !== 0) {
+      return numerator / denominator;
+    }
+  }
+
+  const decimalValue = Number(cleaned);
+  if (!Number.isNaN(decimalValue)) {
+    return decimalValue;
+  }
+
+  return null;
+};
+
+const formatCurrency = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '-';
+  }
+
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+};
+
+const formatPricePerSqft = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '-';
+  }
+
+  return `$${value.toFixed(2)}/sf`;
+};
+
+const formatSquareFeet = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '-';
+  }
+
+  return value.toFixed(2);
 };
 
 export default function SlabDetailPage() {
@@ -89,6 +172,36 @@ export default function SlabDetailPage() {
     if (selectedImagePreviewUrl) return selectedImagePreviewUrl;
     return slab?.image_url || '';
   }, [selectedImagePreviewUrl, slab?.image_url]);
+
+  const liveSquareFeet = useMemo(() => {
+    if (!slab) return null;
+
+    const heightValue = parseDimensionToNumber(slab.height);
+    const widthValue = parseDimensionToNumber(slab.width);
+
+    if (heightValue === null || widthValue === null) {
+      return slab.square_feet ?? null;
+    }
+
+    return Number(((heightValue * widthValue) / 144).toFixed(2));
+  }, [slab]);
+
+  const liveTotalPrice = useMemo(() => {
+    if (!slab) return null;
+
+    const price = slab.price_per_sqft;
+
+    if (
+      price === null ||
+      price === undefined ||
+      Number.isNaN(price) ||
+      liveSquareFeet === null
+    ) {
+      return slab.total_price ?? null;
+    }
+
+    return Number((liveSquareFeet * price).toFixed(2));
+  }, [slab, liveSquareFeet]);
 
   useEffect(() => {
     const loggedIn = localStorage.getItem('loggedIn');
@@ -324,6 +437,12 @@ export default function SlabDetailPage() {
       formData.append('project_name', slab.project_name || '');
       formData.append('item_description', slab.item_description || '');
       formData.append('porosity', String(slab.porosity ?? false));
+      formData.append(
+        'price_per_sqft',
+        slab.price_per_sqft !== null && slab.price_per_sqft !== undefined
+          ? String(slab.price_per_sqft)
+          : ''
+      );
 
       if (selectedImageFile) {
         formData.append('image', selectedImageFile);
@@ -467,13 +586,13 @@ export default function SlabDetailPage() {
               <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
                 <div className="overflow-hidden rounded-xl border bg-white shadow">
                   <div className="aspect-[4/3] bg-gray-200">
-  {imagePreviewSrc ? (
-    <img
-      src={imagePreviewSrc}
-      alt={slab.material_name || slab.slab_code}
-      className="h-full w-full object-cover"
-    />
-  ) : (
+                    {imagePreviewSrc ? (
+                      <img
+                        src={imagePreviewSrc}
+                        alt={slab.material_name || slab.slab_code}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
                       <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
                         No image available
                       </div>
@@ -529,278 +648,304 @@ export default function SlabDetailPage() {
                   </div>
                 </div>
 
-                
+              <div className="rounded-xl border bg-white p-6 shadow">
+  <div className="mb-6 flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-wrap items-center gap-3">
+      <h1 className="text-3xl font-bold text-black">{slab.slab_code}</h1>
 
-                <div className="rounded-xl border bg-white p-6 shadow">
-                  <div className="mb-6 flex flex-wrap items-center gap-3">
-                    <h1 className="text-3xl font-bold text-black">
-                      {slab.slab_code}
-                    </h1>
+      {matchedSlabs.length > 0 && (
+        <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
+          Match
+        </span>
+      )}
+    </div>
 
-                    {matchedSlabs.length > 0 && (
-                      <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
-                        Match
-                      </span>
-                    )}
-                  </div>
+    <div className="min-w-[220px] rounded-lg bg-gray-50 p-4 text-sm text-black">
+      <div>
+        <strong>Price / sf:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={slab.price_per_sqft ?? ''}
+            onChange={(e) =>
+              setSlab({
+                ...slab,
+                price_per_sqft:
+                  e.target.value === '' ? null : Number(e.target.value),
+              })
+            }
+            className="ml-2 w-full max-w-[140px] rounded border px-2 py-1"
+          />
+        ) : (
+          formatPricePerSqft(slab.price_per_sqft)
+        )}
+      </div>
 
-                  <div className="space-y-4">
-                    <div className="text-black">
-                      <strong>Material:</strong>{' '}
-                      {isEditing ? (
-                        <select
-                          value={slab.material_name || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, material_name: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        >
-                          <option value="">Select material</option>
-                          {materialOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        slab.material_name || '-'
-                      )}
-                    </div>
+      <div className="mt-2">
+        <strong>Square feet:</strong> {formatSquareFeet(liveSquareFeet)}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Finish:</strong>{' '}
-                      {isEditing ? (
-                        <select
-                          value={slab.finish || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, finish: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        >
-                          <option value="">Select finish</option>
-                          {finishOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        slab.finish || '-'
-                      )}
-                    </div>
+      <div className="mt-2">
+        <strong>Total price:</strong> {formatCurrency(liveTotalPrice)}
+      </div>
+    </div>
+  </div>
 
-                    <div className="text-black">
-                      <strong>Height:</strong>{' '}
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={slab.height || ''}
-                          onChange={(e) =>
-                            setSlab({
-                              ...slab,
-                              height: sanitizeDimensionInput(e.target.value),
-                            })
-                          }
-                          inputMode="decimal"
-                          pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
-                          title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        />
-                      ) : (
-                        slab.height || '-'
-                      )}
-                    </div>
+  <div className="grid gap-6 lg:grid-cols-2">
+    <div className="space-y-4">
+      <div className="text-black">
+        <strong>Material:</strong>{' '}
+        {isEditing ? (
+          <select
+            value={slab.material_name || ''}
+            onChange={(e) =>
+              setSlab({ ...slab, material_name: e.target.value })
+            }
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          >
+            <option value="">Select material</option>
+            {materialOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          slab.material_name || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Width:</strong>{' '}
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={slab.width || ''}
-                          onChange={(e) =>
-                            setSlab({
-                              ...slab,
-                              width: sanitizeDimensionInput(e.target.value),
-                            })
-                          }
-                          inputMode="decimal"
-                          pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
-                          title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        />
-                      ) : (
-                        slab.width || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Finish:</strong>{' '}
+        {isEditing ? (
+          <select
+            value={slab.finish || ''}
+            onChange={(e) => setSlab({ ...slab, finish: e.target.value })}
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          >
+            <option value="">Select finish</option>
+            {finishOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          slab.finish || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Thickness:</strong>{' '}
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={slab.thickness || ''}
-                          onChange={(e) =>
-                            setSlab({
-                              ...slab,
-                              thickness: sanitizeDimensionInput(e.target.value),
-                            })
-                          }
-                          inputMode="decimal"
-                          pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
-                          title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        />
-                      ) : (
-                        slab.thickness || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Height:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="text"
+            value={slab.height || ''}
+            onChange={(e) =>
+              setSlab({
+                ...slab,
+                height: sanitizeDimensionInput(e.target.value),
+              })
+            }
+            inputMode="decimal"
+            pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
+            title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          />
+        ) : (
+          slab.height || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Warehouse Group:</strong>{' '}
-                      {isEditing ? (
-                        <select
-                          value={slab.warehouse_group || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, warehouse_group: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        >
-                          <option value="">Select location</option>
-                          {warehouseOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        slab.warehouse_group || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Width:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="text"
+            value={slab.width || ''}
+            onChange={(e) =>
+              setSlab({
+                ...slab,
+                width: sanitizeDimensionInput(e.target.value),
+              })
+            }
+            inputMode="decimal"
+            pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
+            title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          />
+        ) : (
+          slab.width || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Status:</strong>{' '}
-                      {isEditing ? (
-                        <select
-                          value={slab.status || 'available'}
-                          onChange={(e) =>
-                            setSlab({ ...slab, status: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        >
-                          {statusOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        slab.status || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Thickness:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="text"
+            value={slab.thickness || ''}
+            onChange={(e) =>
+              setSlab({
+                ...slab,
+                thickness: sanitizeDimensionInput(e.target.value),
+              })
+            }
+            inputMode="decimal"
+            pattern="^(?:\d+(?:\.\d+)?|\.\d+|\d+\s+\d+\/\d+|\d+\/\d+)$"
+            title="Use inches only: 120, 54, 0.75, 3/4, or 126 1/8"
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          />
+        ) : (
+          slab.thickness || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Customer Name:</strong>{' '}
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={slab.customer_name || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, customer_name: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        />
-                      ) : (
-                        slab.customer_name || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Warehouse Group:</strong>{' '}
+        {isEditing ? (
+          <select
+            value={slab.warehouse_group || ''}
+            onChange={(e) =>
+              setSlab({ ...slab, warehouse_group: e.target.value })
+            }
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          >
+            <option value="">Select location</option>
+            {warehouseOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          slab.warehouse_group || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Project Name:</strong>{' '}
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={slab.project_name || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, project_name: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1"
-                        />
-                      ) : (
-                        slab.project_name || '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Status:</strong>{' '}
+        {isEditing ? (
+          <select
+            value={slab.status || 'available'}
+            onChange={(e) => setSlab({ ...slab, status: e.target.value })}
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          >
+            {statusOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          slab.status || '-'
+        )}
+      </div>
+    </div>
 
-                    <div className="text-black">
-                      <strong>Item Description:</strong>{' '}
-                      {isEditing ? (
-                        <textarea
-                          value={slab.item_description || ''}
-                          onChange={(e) =>
-                            setSlab({ ...slab, item_description: e.target.value })
-                          }
-                          className="ml-2 w-full max-w-md rounded border px-2 py-1 align-top"
-                          rows={4}
-                        />
-                      ) : (
-                        slab.item_description || '-'
-                      )}
-                    </div>
+    <div className="space-y-4">
+      <div className="text-black">
+        <strong>Customer Name:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="text"
+            value={slab.customer_name || ''}
+            onChange={(e) =>
+              setSlab({ ...slab, customer_name: e.target.value })
+            }
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          />
+        ) : (
+          slab.customer_name || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Porosity:</strong>{' '}
-                      {isEditing ? (
-                        <select
-                          value={
-                            slab.porosity === true
-                              ? 'true'
-                              : slab.porosity === false
-                              ? 'false'
-                              : ''
-                          }
-                          onChange={(e) =>
-                            setSlab({
-                              ...slab,
-                              porosity:
-                                e.target.value === 'true'
-                                  ? true
-                                  : e.target.value === 'false'
-                                  ? false
-                                  : undefined,
-                            })
-                          }
-                          className="ml-2 rounded border px-2 py-1"
-                        >
-                          <option value="">Select</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      ) : slab.porosity === true ? (
-                        'Yes'
-                      ) : slab.porosity === false ? (
-                        'No'
-                      ) : (
-                        '-'
-                      )}
-                    </div>
+      <div className="text-black">
+        <strong>Project Name:</strong>{' '}
+        {isEditing ? (
+          <input
+            type="text"
+            value={slab.project_name || ''}
+            onChange={(e) =>
+              setSlab({ ...slab, project_name: e.target.value })
+            }
+            className="ml-2 w-full max-w-md rounded border px-2 py-1"
+          />
+        ) : (
+          slab.project_name || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Active:</strong>{' '}
-                      {slab.is_active === true
-                        ? 'Yes'
-                        : slab.is_active === false
-                        ? 'No'
-                        : '-'}
-                    </div>
+      <div className="text-black">
+        <strong>Item Description:</strong>{' '}
+        {isEditing ? (
+          <textarea
+            value={slab.item_description || ''}
+            onChange={(e) =>
+              setSlab({ ...slab, item_description: e.target.value })
+            }
+            className="ml-2 w-full max-w-md rounded border px-2 py-1 align-top"
+            rows={4}
+          />
+        ) : (
+          slab.item_description || '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Created At:</strong> {slab.created_at || '-'}
-                    </div>
+      <div className="text-black">
+        <strong>Porosity:</strong>{' '}
+        {isEditing ? (
+          <select
+            value={
+              slab.porosity === true
+                ? 'true'
+                : slab.porosity === false
+                ? 'false'
+                : ''
+            }
+            onChange={(e) =>
+              setSlab({
+                ...slab,
+                porosity:
+                  e.target.value === 'true'
+                    ? true
+                    : e.target.value === 'false'
+                    ? false
+                    : undefined,
+              })
+            }
+            className="ml-2 rounded border px-2 py-1"
+          >
+            <option value="">Select</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        ) : slab.porosity === true ? (
+          'Yes'
+        ) : slab.porosity === false ? (
+          'No'
+        ) : (
+          '-'
+        )}
+      </div>
 
-                    <div className="text-black">
-                      <strong>Updated At:</strong> {slab.updated_at || '-'}
-                    </div>
-                  </div>
-                </div>
+      <div className="text-black">
+        <strong>Active:</strong>{' '}
+        {slab.is_active === true ? 'Yes' : slab.is_active === false ? 'No' : '-'}
+      </div>
+
+      <div className="text-black">
+        <strong>Created:</strong> {formatDateTimeRounded(slab.created_at)}
+      </div>
+
+      <div className="text-black">
+        <strong>Modified:</strong> {formatDateTimeRounded(slab.updated_at)}
+      </div>
+    </div>
+  </div>
+</div>
               </div>
 
               <section className="mt-8">
@@ -869,8 +1014,9 @@ export default function SlabDetailPage() {
                       </Link>
                     ))}
                   </div>
-                  
-                )}<div className="rounded-xl border bg-white p-4 shadow sm:hidden">
+                )}
+
+                <div className="rounded-xl border bg-white p-4 shadow sm:hidden">
                   <div className="flex flex-col gap-3">
                     <button
                       type="button"

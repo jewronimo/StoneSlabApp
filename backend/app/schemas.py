@@ -18,6 +18,9 @@ class SlabResponse(BaseModel):
     thickness: str
     thickness_value: float | None = None
     warehouse_group: str
+    price_per_sqft: float | None = None
+    square_feet: float | None = None
+    total_price: float | None = None
     status: str
     customer_name: Optional[str]
     project_name: Optional[str]

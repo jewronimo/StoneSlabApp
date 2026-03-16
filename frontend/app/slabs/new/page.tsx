@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -21,6 +21,7 @@ type SlabFormState = {
   project_name: string;
   item_description: string;
   porosity: boolean;
+  price_per_sqft: string;
 };
 
 const DEFAULT_MATERIAL_OPTIONS = [
@@ -57,6 +58,7 @@ const initialForm: SlabFormState = {
   project_name: '',
   item_description: '',
   porosity: false,
+  price_per_sqft: '',
 };
 
 function emptyToNull(value: string) {
@@ -66,6 +68,10 @@ function emptyToNull(value: string) {
 
 function sanitizeDimensionInput(value: string) {
   return value.replace(/[^\d./\s]/g, '').replace(/\s+/g, ' ').trimStart();
+}
+
+function sanitizePriceInput(value: string) {
+  return value.replace(/[^\d.]/g, '');
 }
 
 function buildCreateFormData(
@@ -91,6 +97,7 @@ function buildCreateFormData(
   const customerName = emptyToNull(form.customer_name);
   const projectName = emptyToNull(form.project_name);
   const itemDescription = emptyToNull(form.item_description);
+  const pricePerSqft = emptyToNull(form.price_per_sqft);
 
   if (customerName) {
     formData.append('customer_name', customerName);
@@ -102,6 +109,10 @@ function buildCreateFormData(
 
   if (itemDescription) {
     formData.append('item_description', itemDescription);
+  }
+
+  if (pricePerSqft) {
+    formData.append('price_per_sqft', pricePerSqft);
   }
 
   formData.append('image', imageFile);
@@ -196,7 +207,7 @@ export default function NewSlabPage() {
   }, []);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value, type } = e.target;
 
@@ -211,10 +222,15 @@ export default function NewSlabPage() {
       return;
     }
 
+    if (name === 'price_per_sqft') {
+      setForm((prev) => ({ ...prev, [name]: sanitizePriceInput(value) }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     setImageFile(e.target.files?.[0] ?? null);
   };
 
@@ -254,14 +270,13 @@ export default function NewSlabPage() {
   };
 
   const finishFlow = () => {
-  setShowMatchModal(false);
-  setPreviousMatchedSlabCode(null);
-  setMatchedSequenceNumber(1);
-  setSuccessMessage('');
-  setError('');
-  router.push('/slabs');
-};
-
+    setShowMatchModal(false);
+    setPreviousMatchedSlabCode(null);
+    setMatchedSequenceNumber(1);
+    setSuccessMessage('');
+    setError('');
+    router.push('/slabs');
+  };
 
   const handleModalYes = () => {
     setShowMatchModal(false);
@@ -305,9 +320,7 @@ export default function NewSlabPage() {
       setSuccessMessage('Slab saved successfully.');
       setShowMatchModal(true);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Could not create slab.'
-      );
+      setError(err instanceof Error ? err.message : 'Could not create slab.');
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -439,6 +452,20 @@ export default function NewSlabPage() {
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-black">
+                  Price / sf
+                </label>
+                <input
+                  name="price_per_sqft"
+                  value={form.price_per_sqft}
+                  onChange={handleChange}
+                  inputMode="decimal"
+                  className="w-full rounded-lg border px-3 py-2 text-black"
+                  placeholder="45.00"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-black">
                   Warehouse location *
                 </label>
                 <select
@@ -520,7 +547,8 @@ export default function NewSlabPage() {
                 />
                 {matchedSequenceNumber > 1 && (
                   <p className="mt-1 text-sm text-gray-600">
-                    Fields were copied from the previous slab. Upload the image for this slab.
+                    Fields were copied from the previous slab. Upload the image
+                    for this slab.
                   </p>
                 )}
               </div>
@@ -591,8 +619,8 @@ export default function NewSlabPage() {
             </h2>
 
             <p className="mt-3 text-sm text-gray-700">
-              Yes will open the next slab form with the current values copied over.
-              You will still need to upload the next slab image.
+              Yes will open the next slab form with the current values copied
+              over. You will still need to upload the next slab image.
             </p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">

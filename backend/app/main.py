@@ -1,21 +1,21 @@
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from io import BytesIO
 from pathlib import Path
 import re
-from shutil import copyfileobj, rmtree
+from shutil import rmtree
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.db import check_db_connection, engine, get_db
 from app.models import Base, Slab
 from app.schemas import SlabResponse
-
-from io import BytesIO
-from PIL import Image, ImageOps
 
 
 app = FastAPI(title="Stone Slab API")
@@ -61,6 +61,9 @@ ALLOWED_MATERIALS = {
     "Quartzite",
     "Misc",
 }
+
+MONEY_QUANTIZE = Decimal("0.01")
+SQUARE_FEET_DIVISOR = Decimal("144")
 
 
 def generate_slab_code(db: Session) -> str:
@@ -129,6 +132,34 @@ def validate_warehouse_group(value: str) -> str:
     return cleaned
 
 
+def validate_price_per_sqft(value: str | None) -> Decimal | None:
+    cleaned = clean_optional_text(value)
+    if cleaned is None:
+        return None
+
+    if not re.fullmatch(r"^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$", cleaned):
+        raise HTTPException(
+            status_code=400,
+            detail="price_per_sqft must be a non-negative number with up to 2 decimal places",
+        )
+
+    try:
+        price = Decimal(cleaned)
+    except InvalidOperation:
+        raise HTTPException(
+            status_code=400,
+            detail="price_per_sqft could not be converted to a numeric value",
+        )
+
+    if price < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="price_per_sqft cannot be negative",
+        )
+
+    return price.quantize(MONEY_QUANTIZE, rounding=ROUND_HALF_UP)
+
+
 def validate_slab_rules(
     *,
     finish_raw: str,
@@ -195,6 +226,7 @@ def parse_dimension_to_number(value: str | None) -> float | None:
 
     return None
 
+
 def parse_required_dimension_value(value: str, field_name: str) -> float:
     parsed = parse_dimension_to_number(value)
     if parsed is None:
@@ -203,7 +235,6 @@ def parse_required_dimension_value(value: str, field_name: str) -> float:
             detail=f"{field_name} could not be converted to numeric value",
         )
     return parsed
-
 
 
 def format_dimension_for_filename(value: str | None) -> str:
@@ -227,12 +258,7 @@ def cleanup_match_group_if_needed(db: Session, match_group_code: str | None) -> 
     if not match_group_code:
         return
 
-    grouped_slabs = (
-        db.query(Slab)
-        .filter(Slab.match_group_code == match_group_code)
-        .all()
-    )
-
+    grouped_slabs = db.query(Slab).filter(Slab.match_group_code == match_group_code).all()
     active_count = sum(1 for item in grouped_slabs if item.is_active)
 
     if active_count < 2:
@@ -273,6 +299,29 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
     slab.image_content_type = content_type
 
 
+def rename_existing_slab_image(slab: Slab) -> None:
+    if not slab.image_filename:
+        return
+
+    slab_dir = SLAB_IMAGES_ROOT / str(slab.id)
+    old_path = slab_dir / slab.image_filename
+
+    if not old_path.exists():
+        return
+
+    new_filename = build_slab_image_filename(slab, slab.image_filename)
+    if new_filename == slab.image_filename:
+        return
+
+    new_path = slab_dir / new_filename
+
+    if new_path.exists() and new_path != old_path:
+        new_path.unlink()
+
+    old_path.rename(new_path)
+    slab.image_filename = new_filename
+
+
 def build_image_url(request: Request, slab: Slab) -> str | None:
     if not slab.image_filename:
         return None
@@ -281,18 +330,46 @@ def build_image_url(request: Request, slab: Slab) -> str | None:
     return f"{base_url}/media/slabs/{slab.id}/{slab.image_filename}"
 
 
+def decimal_to_float(value: Decimal | float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def calculate_square_feet(slab: Slab) -> Decimal | None:
+    if slab.height_value is None or slab.width_value is None:
+        return None
+
+    area = (
+        Decimal(str(slab.height_value)) * Decimal(str(slab.width_value))
+    ) / SQUARE_FEET_DIVISOR
+    return area.quantize(MONEY_QUANTIZE, rounding=ROUND_HALF_UP)
+
+
+def calculate_total_price(square_feet: Decimal | None, price_per_sqft: Decimal | None) -> Decimal | None:
+    if square_feet is None or price_per_sqft is None:
+        return None
+
+    total = square_feet * price_per_sqft
+    return total.quantize(MONEY_QUANTIZE, rounding=ROUND_HALF_UP)
+
+
 def serialize_slab(slab: Slab, request: Request) -> dict:
+    price_per_sqft = slab.price_per_sqft
+    square_feet = calculate_square_feet(slab)
+    total_price = calculate_total_price(square_feet, price_per_sqft)
+
     return {
         "id": slab.id,
         "slab_code": slab.slab_code,
         "material_name": slab.material_name,
         "finish": slab.finish,
         "height": slab.height,
-        "height_value": float(slab.height_value) if slab.height_value is not None else None,
+        "height_value": decimal_to_float(slab.height_value),
         "width": slab.width,
-        "width_value": float(slab.width_value) if slab.width_value is not None else None,
+        "width_value": decimal_to_float(slab.width_value),
         "thickness": slab.thickness,
-        "thickness_value": slab.thickness_value,
+        "thickness_value": decimal_to_float(slab.thickness_value),
         "warehouse_group": slab.warehouse_group,
         "status": slab.status,
         "customer_name": slab.customer_name,
@@ -304,33 +381,43 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "updated_at": slab.updated_at,
         "image_url": build_image_url(request, slab),
         "match_group_code": slab.match_group_code,
+        "price_per_sqft": decimal_to_float(price_per_sqft),
+        "square_feet": decimal_to_float(square_feet),
+        "total_price": decimal_to_float(total_price),
     }
 
-def ensure_dimension_numeric_columns() -> None:
+
+def ensure_slab_columns() -> None:
     inspector = inspect(engine)
     if not inspector.has_table("slabs"):
         return
 
     columns = {column["name"] for column in inspector.get_columns("slabs")}
+
     with engine.begin() as conn:
         if "height_value" not in columns:
             conn.execute(text("ALTER TABLE slabs ADD COLUMN height_value FLOAT"))
             conn.execute(text("UPDATE slabs SET height_value = 0 WHERE height_value IS NULL"))
             conn.execute(text("ALTER TABLE slabs ALTER COLUMN height_value SET NOT NULL"))
+
         if "width_value" not in columns:
             conn.execute(text("ALTER TABLE slabs ADD COLUMN width_value FLOAT"))
             conn.execute(text("UPDATE slabs SET width_value = 0 WHERE width_value IS NULL"))
             conn.execute(text("ALTER TABLE slabs ALTER COLUMN width_value SET NOT NULL"))
+
         if "thickness_value" not in columns:
             conn.execute(text("ALTER TABLE slabs ADD COLUMN thickness_value FLOAT"))
             conn.execute(text("UPDATE slabs SET thickness_value = 0 WHERE thickness_value IS NULL"))
             conn.execute(text("ALTER TABLE slabs ALTER COLUMN thickness_value SET NOT NULL"))
 
+        if "price_per_sqft" not in columns:
+            conn.execute(text("ALTER TABLE slabs ADD COLUMN price_per_sqft NUMERIC(10,2)"))
+
 
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
-    ensure_dimension_numeric_columns()
+    ensure_slab_columns()
 
 
 @app.get("/")
@@ -379,16 +466,13 @@ def create_matched_slab(
     project_name: str | None = Form(None),
     item_description: str | None = Form(None),
     porosity: bool = Form(...),
+    price_per_sqft: str | None = Form(None),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    previous_slab_code_clean = clean_required_text(
-        previous_slab_code, "previous_slab_code"
-    )
+    previous_slab_code_clean = clean_required_text(previous_slab_code, "previous_slab_code")
 
-    previous_slab = (
-        db.query(Slab).filter(Slab.slab_code == previous_slab_code_clean).first()
-    )
+    previous_slab = db.query(Slab).filter(Slab.slab_code == previous_slab_code_clean).first()
     if not previous_slab:
         raise HTTPException(status_code=404, detail="Previous slab not found")
 
@@ -396,6 +480,7 @@ def create_matched_slab(
     height_clean = validate_dimension_text(height, "height")
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
+    price_per_sqft_value = validate_price_per_sqft(price_per_sqft)
 
     height_value = parse_required_dimension_value(height_clean, "height")
     width_value = parse_required_dimension_value(width_clean, "width")
@@ -434,6 +519,7 @@ def create_matched_slab(
         porosity=porosity,
         is_active=(status_clean != "used"),
         match_group_code=match_group_code,
+        price_per_sqft=price_per_sqft_value,
     )
 
     db.add(slab)
@@ -462,6 +548,7 @@ def create_slab(
     item_description: str | None = Form(None),
     porosity: bool = Form(...),
     match_group_code: str | None = Form(None),
+    price_per_sqft: str | None = Form(None),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -469,11 +556,11 @@ def create_slab(
     height_clean = validate_dimension_text(height, "height")
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
+    price_per_sqft_value = validate_price_per_sqft(price_per_sqft)
 
     height_value = parse_required_dimension_value(height_clean, "height")
     width_value = parse_required_dimension_value(width_clean, "width")
     thickness_value = parse_required_dimension_value(thickness_clean, "thickness")
-
 
     customer_name_clean = clean_optional_text(customer_name)
     project_name_clean = clean_optional_text(project_name)
@@ -505,6 +592,7 @@ def create_slab(
         porosity=porosity,
         is_active=(status_clean != "used"),
         match_group_code=normalize_match_group_code(match_group_code),
+        price_per_sqft=price_per_sqft_value,
     )
 
     db.add(slab)
@@ -529,6 +617,8 @@ def list_slabs(
     max_width: float | None = None,
     min_thickness: float | None = None,
     max_thickness: float | None = None,
+    min_price_per_sqft: float | None = None,
+    max_price_per_sqft: float | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(Slab)
@@ -564,6 +654,11 @@ def list_slabs(
     if max_thickness is not None:
         query = query.filter(Slab.thickness_value <= max_thickness)
 
+    if min_price_per_sqft is not None:
+        query = query.filter(Slab.price_per_sqft >= min_price_per_sqft)
+    if max_price_per_sqft is not None:
+        query = query.filter(Slab.price_per_sqft <= max_price_per_sqft)
+
     is_default_load = (
         include_inactive is False
         and status is None
@@ -574,6 +669,8 @@ def list_slabs(
         and max_width is None
         and min_thickness is None
         and max_thickness is None
+        and min_price_per_sqft is None
+        and max_price_per_sqft is None
     )
 
     if is_default_load:
@@ -582,6 +679,7 @@ def list_slabs(
         slabs = query.order_by(Slab.id.desc()).all()
 
     return [serialize_slab(slab, request) for slab in slabs]
+
 
 @app.delete("/slabs/{slab_code}")
 def delete_slab(slab_code: str, db: Session = Depends(get_db)):
@@ -677,6 +775,7 @@ def update_slab(
     project_name: str | None = Form(None),
     item_description: str | None = Form(None),
     porosity: bool = Form(...),
+    price_per_sqft: str | None = Form(None),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -690,6 +789,11 @@ def update_slab(
     height_clean = validate_dimension_text(height, "height")
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
+
+    if price_per_sqft is None:
+        price_per_sqft_value = slab.price_per_sqft
+    else:
+        price_per_sqft_value = validate_price_per_sqft(price_per_sqft)
 
     height_value = parse_required_dimension_value(height_clean, "height")
     width_value = parse_required_dimension_value(width_clean, "width")
@@ -707,6 +811,12 @@ def update_slab(
         project_name=project_name_clean,
     )
 
+    dimensions_changed = (
+        slab.height != height_clean
+        or slab.width != width_clean
+        or slab.thickness != thickness_clean
+    )
+
     slab.material_name = material_name_clean
     slab.finish = finish_clean
     slab.height = height_clean
@@ -722,9 +832,12 @@ def update_slab(
     slab.item_description = item_description_clean
     slab.porosity = porosity
     slab.is_active = status_clean != "used"
+    slab.price_per_sqft = price_per_sqft_value
 
     if image is not None and image.filename:
         save_slab_image(slab, image)
+    elif dimensions_changed:
+        rename_existing_slab_image(slab)
 
     cleanup_match_group_if_needed(db, existing_match_group_code)
 

@@ -26,6 +26,9 @@ type Slab = {
   updated_at?: string;
   image_url?: string | null;
   match_group_code?: string | null;
+  price_per_sqft?: number | null;
+  square_feet?: number | null;
+  total_price?: number | null;
 };
 
 export default function SlabsPage() {
@@ -49,6 +52,7 @@ export default function SlabsPage() {
   const minHeight = searchParams.get('minHeight') ?? '';
   const minWidth = searchParams.get('minWidth') ?? '';
   const minThickness = searchParams.get('minThickness') ?? '';
+  const maxPricePerSqft = searchParams.get('maxPricePerSqft') ?? '';
   const showInactive = searchParams.get('showInactive') === 'true';
 
   const warehouseOptions = useMemo(() => {
@@ -76,6 +80,14 @@ export default function SlabsPage() {
 
     const next = params.toString();
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  };
+
+  const formatPricePerSqft = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return null;
+    }
+
+    return `$${value.toFixed(2)}/sf`;
   };
 
   useEffect(() => {
@@ -106,6 +118,11 @@ export default function SlabsPage() {
         if (minWidth) params.set('min_width', minWidth);
         if (minThickness) params.set('min_thickness', minThickness);
 
+        if (maxPricePerSqft) {
+          params.set('min_price_per_sqft', '0');
+          params.set('max_price_per_sqft', maxPricePerSqft);
+        }
+
         const res = await fetch(`${apiBaseUrl}/slabs?${params.toString()}`, {
           cache: 'no-store',
         });
@@ -130,7 +147,15 @@ export default function SlabsPage() {
     };
 
     fetchSlabs();
-  }, [showInactive, statusFilter, warehouseFilter, minHeight, minWidth, minThickness]);
+  }, [
+    showInactive,
+    statusFilter,
+    warehouseFilter,
+    minHeight,
+    minWidth,
+    minThickness,
+    maxPricePerSqft,
+  ]);
 
   const handleLogout = () => {
     localStorage.removeItem('loggedIn');
@@ -351,7 +376,7 @@ export default function SlabsPage() {
               </select>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <input
                 type="number"
                 step="any"
@@ -382,6 +407,18 @@ export default function SlabsPage() {
                 }
                 className="rounded-lg border px-3 py-2 text-black"
                 placeholder="Min thickness"
+              />
+
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={maxPricePerSqft}
+                onChange={(e) =>
+                  updateParams({ maxPricePerSqft: e.target.value })
+                }
+                className="rounded-lg border px-3 py-2 text-black"
+                placeholder="Max $ / sf"
               />
             </div>
 
@@ -434,6 +471,8 @@ export default function SlabsPage() {
                   )}?returnTo=${encodeURIComponent(currentListUrl)}`
                 : '#';
 
+              const priceBadge = formatPricePerSqft(slab.price_per_sqft);
+
               return (
                 <Link
                   key={slab.id}
@@ -456,6 +495,12 @@ export default function SlabsPage() {
                     {hasMatches && (
                       <span className="absolute right-3 top-3 rounded-full bg-black px-3 py-1 text-xs font-semibold text-white">
                         Match
+                      </span>
+                    )}
+
+                    {priceBadge && (
+                      <span className="absolute bottom-3 right-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-black shadow">
+                        {priceBadge}
                       </span>
                     )}
                   </div>

@@ -1,7 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Integer, String
-from sqlalchemy import Boolean, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, Integer, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -23,6 +23,7 @@ class Slab(Base):
     thickness: Mapped[str] = mapped_column(String(50))
     thickness_value: Mapped[float] = mapped_column(Float)
     warehouse_group: Mapped[str] = mapped_column(String(10))
+    price_per_sqft: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="available")
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     project_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -40,4 +41,3 @@ class Slab(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
-    
