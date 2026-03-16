@@ -17,11 +17,16 @@ backend/.env
 backend/slabs/*
 backend/slabs/**/*
 !backend/slabs/.gitkeep
+storage/slabs/*
+storage/slabs/**/*
+!storage/slabs/.gitkeep
 
 # Node / Next
 frontend/node_modules/
 frontend/.next/
 frontend/out/
+
+
 
 # Logs
 *.log

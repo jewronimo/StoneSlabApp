@@ -32,7 +32,8 @@ app.add_middleware(
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MEDIA_ROOT = BASE_DIR / "media"
+PROJECT_ROOT = BASE_DIR.parent
+MEDIA_ROOT = PROJECT_ROOT / "storage"
 SLAB_IMAGES_ROOT = MEDIA_ROOT / "slabs"
 
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
