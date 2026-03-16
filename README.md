@@ -120,6 +120,49 @@ SLAB_CODE(height x width x thickness)
 
 This ensures images are human-readable and easily identifiable outside the system.
 
+## Numeric Dimension Fields
+
+The app now stores slab dimensions in two forms:
+
+- Original text values for display:
+  - `height`
+  - `width`
+  - `thickness`
+
+- Numeric values for filtering/querying:
+  - `height_value`
+  - `width_value`
+  - `thickness_value`
+
+Supported input formats include:
+
+- whole numbers (`120`)
+- decimals (`0.75`, `.5`)
+- fractions (`3/4`)
+- mixed fractions (`1 1/2`, `126 1/8`)
+
+### Behavior
+
+- On slab create/update, dimension text is parsed and numeric values are stored.
+- Backend slab filtering now uses numeric dimension values instead of string comparison.
+- Default slab list load returns the latest 20 slabs.
+- When filters are applied, filtering runs against the full dataset.
+
+### Important database note
+
+The database must include these columns in the `slabs` table:
+
+- `height_value`
+- `width_value`
+- `thickness_value`
+
+Example SQL:
+
+```sql
+ALTER TABLE slabs ADD COLUMN height_value NUMERIC(10,4);
+ALTER TABLE slabs ADD COLUMN width_value NUMERIC(10,4);
+ALTER TABLE slabs ADD COLUMN thickness_value NUMERIC(10,4);
+
 ---
 
 # Development Status
