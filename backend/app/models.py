@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -16,8 +17,11 @@ class Slab(Base):
     material_name: Mapped[str] = mapped_column(String(255))
     finish: Mapped[str] = mapped_column(String(50))
     height: Mapped[str] = mapped_column(String(50))
+    height_value: Mapped[float] = mapped_column(Float)
     width: Mapped[str] = mapped_column(String(50))
+    width_value: Mapped[float] = mapped_column(Float)
     thickness: Mapped[str] = mapped_column(String(50))
+    thickness_value: Mapped[float] = mapped_column(Float)
     warehouse_group: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20), default="available")
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -36,3 +40,4 @@ class Slab(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    

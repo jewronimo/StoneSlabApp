@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.db import check_db_connection, engine, get_db
@@ -194,6 +195,16 @@ def parse_dimension_to_number(value: str | None) -> float | None:
 
     return None
 
+def parse_required_dimension_value(value: str, field_name: str) -> float:
+    parsed = parse_dimension_to_number(value)
+    if parsed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} could not be converted to numeric value",
+        )
+    return parsed
+
+
 
 def format_dimension_for_filename(value: str | None) -> str:
     number = parse_dimension_to_number(value)
@@ -277,8 +288,11 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "material_name": slab.material_name,
         "finish": slab.finish,
         "height": slab.height,
+        "height_value": slab.height_value,
         "width": slab.width,
+        "width_value": slab.width_value,
         "thickness": slab.thickness,
+        "thickness_value": slab.thickness_value,
         "warehouse_group": slab.warehouse_group,
         "status": slab.status,
         "customer_name": slab.customer_name,
@@ -292,10 +306,31 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "match_group_code": slab.match_group_code,
     }
 
+def ensure_dimension_numeric_columns() -> None:
+    inspector = inspect(engine)
+    if not inspector.has_table("slabs"):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("slabs")}
+    with engine.begin() as conn:
+        if "height_value" not in columns:
+            conn.execute(text("ALTER TABLE slabs ADD COLUMN height_value FLOAT"))
+            conn.execute(text("UPDATE slabs SET height_value = 0 WHERE height_value IS NULL"))
+            conn.execute(text("ALTER TABLE slabs ALTER COLUMN height_value SET NOT NULL"))
+        if "width_value" not in columns:
+            conn.execute(text("ALTER TABLE slabs ADD COLUMN width_value FLOAT"))
+            conn.execute(text("UPDATE slabs SET width_value = 0 WHERE width_value IS NULL"))
+            conn.execute(text("ALTER TABLE slabs ALTER COLUMN width_value SET NOT NULL"))
+        if "thickness_value" not in columns:
+            conn.execute(text("ALTER TABLE slabs ADD COLUMN thickness_value FLOAT"))
+            conn.execute(text("UPDATE slabs SET thickness_value = 0 WHERE thickness_value IS NULL"))
+            conn.execute(text("ALTER TABLE slabs ALTER COLUMN thickness_value SET NOT NULL"))
+
 
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    ensure_dimension_numeric_columns()
 
 
 @app.get("/")
@@ -362,6 +397,10 @@ def create_matched_slab(
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
 
+    height_value = parse_required_dimension_value(height_clean, "height")
+    width_value = parse_required_dimension_value(width_clean, "width")
+    thickness_value = parse_required_dimension_value(thickness_clean, "thickness")
+
     customer_name_clean = clean_optional_text(customer_name)
     project_name_clean = clean_optional_text(project_name)
     item_description_clean = clean_optional_text(item_description)
@@ -382,8 +421,11 @@ def create_matched_slab(
         material_name=material_name_clean,
         finish=finish_clean,
         height=height_clean,
+        height_value=height_value,
         width=width_clean,
+        width_value=width_value,
         thickness=thickness_clean,
+        thickness_value=thickness_value,
         warehouse_group=warehouse_group_clean,
         status=status_clean,
         customer_name=customer_name_clean,
@@ -428,6 +470,11 @@ def create_slab(
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
 
+    height_value = parse_required_dimension_value(height_clean, "height")
+    width_value = parse_required_dimension_value(width_clean, "width")
+    thickness_value = parse_required_dimension_value(thickness_clean, "thickness")
+
+
     customer_name_clean = clean_optional_text(customer_name)
     project_name_clean = clean_optional_text(project_name)
     item_description_clean = clean_optional_text(item_description)
@@ -445,8 +492,11 @@ def create_slab(
         material_name=material_name_clean,
         finish=finish_clean,
         height=height_clean,
+        height_value=height_value,
         width=width_clean,
+        width_value=width_value,
         thickness=thickness_clean,
+        thickness_value=thickness_value,
         warehouse_group=warehouse_group_clean,
         status=status_clean,
         customer_name=customer_name_clean,
@@ -605,6 +655,10 @@ def update_slab(
     width_clean = validate_dimension_text(width, "width")
     thickness_clean = validate_dimension_text(thickness, "thickness")
 
+    height_value = parse_required_dimension_value(height_clean, "height")
+    width_value = parse_required_dimension_value(width_clean, "width")
+    thickness_value = parse_required_dimension_value(thickness_clean, "thickness")
+
     customer_name_clean = clean_optional_text(customer_name)
     project_name_clean = clean_optional_text(project_name)
     item_description_clean = clean_optional_text(item_description)
@@ -620,8 +674,11 @@ def update_slab(
     slab.material_name = material_name_clean
     slab.finish = finish_clean
     slab.height = height_clean
+    slab.height_value = height_value
     slab.width = width_clean
+    slab.width_value = width_value
     slab.thickness = thickness_clean
+    slab.thickness_value = thickness_value
     slab.warehouse_group = warehouse_group_clean
     slab.status = status_clean
     slab.customer_name = customer_name_clean

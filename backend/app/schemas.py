@@ -12,8 +12,11 @@ class SlabResponse(BaseModel):
     material_name: str
     finish: str
     height: str
+    height_value: float
     width: str
+    width_value: float
     thickness: str
+    thickness_value: float
     warehouse_group: str
     status: str
     customer_name: Optional[str]
@@ -24,4 +27,5 @@ class SlabResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     image_url: Optional[str] = None
+    match_group_code: Optional[str] = None
     match_group_code: Optional[str] = None
