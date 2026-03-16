@@ -164,7 +164,33 @@ ALTER TABLE slabs ADD COLUMN width_value NUMERIC(10,4);
 ALTER TABLE slabs ADD COLUMN thickness_value NUMERIC(10,4);
 
 ---
+## 110917c
 
+### Pricing
+- Added editable `price_per_sqft` field for each slab
+- Backend now returns computed `square_feet` and `total_price`
+- Slab gallery supports filtering by maximum price per square foot
+- Slab cards show price per square foot in the bottom-right corner
+- Slab detail page shows:
+  - price per square foot
+  - square footage
+  - total price
+- New slab page supports entering price per square foot
+
+### Dimensions and filtering
+- Slab dimensions are stored both as display text and numeric values
+- Backend filtering uses numeric dimension values instead of string comparison
+- Default slab gallery load returns the latest 20 slabs
+- Supported numeric filtering includes:
+  - height
+  - width
+  - thickness
+  - price per square foot
+
+### Image handling
+- Slab image filenames are generated from slab code and dimensions
+- When slab dimensions are edited, the existing image filename is automatically renamed to reflect the updated dimensions
+- Uploading a new image on edit also saves it using the current slab dimensions in the filename
 # Development Status
 
 This project is currently in active development.
