@@ -191,6 +191,21 @@ ALTER TABLE slabs ADD COLUMN thickness_value NUMERIC(10,4);
 - Slab image filenames are generated from slab code and dimensions
 - When slab dimensions are edited, the existing image filename is automatically renamed to reflect the updated dimensions
 - Uploading a new image on edit also saves it using the current slab dimensions in the filename
+
+### Image and thumbnail URLs
+- `image_url` points to the full uploaded slab image and is used for full-size detail and download flows.
+- `thumbnail_url` points to the generated preview thumbnail used by gallery and matched slab preview cards.
+- API responses safely fall back to `image_url` when `thumbnail_url` is missing, so older rows still render previews.
+
+### Backfilling older slabs
+To generate thumbnails for older slabs that have an image but no `thumbnail_url`, run:
+
+```bash
+cd backend
+python -m app.main --backfill-missing-thumbnails
+```
+
+This command only processes slabs missing `thumbnail_url` and skips unreadable images without aborting the whole run.
 # Development Status
 
 This project is currently in active development.
