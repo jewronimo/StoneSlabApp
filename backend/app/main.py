@@ -64,6 +64,7 @@ ALLOWED_MATERIALS = {
 
 MONEY_QUANTIZE = Decimal("0.01")
 SQUARE_FEET_DIVISOR = Decimal("144")
+THUMBNAIL_SIZE = (640, 480)
 
 
 def generate_slab_code(db: Session) -> str:
@@ -254,6 +255,11 @@ def build_slab_image_filename(slab: Slab, original_filename: str) -> str:
     return f"{code_part}({height_part}x{width_part}x{thickness_part}){extension}"
 
 
+def build_slab_thumbnail_filename(image_filename: str) -> str:
+    image_path = Path(image_filename)
+    return f"{image_path.stem}_thumbnail.jpg"
+
+
 def cleanup_match_group_if_needed(db: Session, match_group_code: str | None) -> None:
     if not match_group_code:
         return
@@ -283,6 +289,8 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
 
     stored_filename = build_slab_image_filename(slab, image.filename)
     destination = slab_dir / stored_filename
+    thumbnail_filename = build_slab_thumbnail_filename(stored_filename)
+    thumbnail_destination = slab_dir / thumbnail_filename
 
     image_bytes = image.file.read()
 
@@ -295,8 +303,17 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
 
         corrected.save(destination, format=save_format)
 
+        thumbnail_image = ImageOps.fit(
+            corrected.convert("RGB"),
+            THUMBNAIL_SIZE,
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+        thumbnail_image.save(thumbnail_destination, format="JPEG", quality=90)
+
     slab.image_filename = stored_filename
     slab.image_content_type = content_type
+    slab.thumbnail_url = f"/media/slabs/{slab.id}/{thumbnail_filename}"
 
 
 def rename_existing_slab_image(slab: Slab) -> None:
@@ -309,6 +326,9 @@ def rename_existing_slab_image(slab: Slab) -> None:
     if not old_path.exists():
         return
 
+    old_thumbnail_filename = build_slab_thumbnail_filename(slab.image_filename)
+    old_thumbnail_path = slab_dir / old_thumbnail_filename
+
     new_filename = build_slab_image_filename(slab, slab.image_filename)
     if new_filename == slab.image_filename:
         return
@@ -319,7 +339,17 @@ def rename_existing_slab_image(slab: Slab) -> None:
         new_path.unlink()
 
     old_path.rename(new_path)
+
+    new_thumbnail_filename = build_slab_thumbnail_filename(new_filename)
+    new_thumbnail_path = slab_dir / new_thumbnail_filename
+
+    if old_thumbnail_path.exists():
+        if new_thumbnail_path.exists() and new_thumbnail_path != old_thumbnail_path:
+            new_thumbnail_path.unlink()
+        old_thumbnail_path.rename(new_thumbnail_path)
+
     slab.image_filename = new_filename
+    slab.thumbnail_url = f"/media/slabs/{slab.id}/{new_thumbnail_filename}"
 
 
 def build_image_url(request: Request, slab: Slab) -> str | None:
