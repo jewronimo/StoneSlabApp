@@ -25,6 +25,7 @@ type Slab = {
   created_at?: string;
   updated_at?: string;
   image_url?: string | null;
+  thumbnail_url?: string | null;
   match_group_code?: string | null;
   price_per_sqft?: number | null;
   square_feet?: number | null;
@@ -480,9 +481,9 @@ export default function SlabsPage() {
                   className="group overflow-hidden rounded-xl border bg-white shadow transition hover:-translate-y-0.5 hover:shadow-lg"
                 >
                   <div className="relative aspect-[4/3] bg-gray-200">
-                    {slab.image_url ? (
+                    {slab.thumbnail_url || slab.image_url ? (
                       <img
-                        src={slab.image_url}
+                        src={slab.thumbnail_url || slab.image_url || ''}
                         alt={slab.material_name || 'Slab image'}
                         className="h-full w-full object-cover"
                       />
