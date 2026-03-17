@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import re
 from shutil import rmtree
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -381,18 +382,28 @@ def rename_existing_slab_image(slab: Slab) -> None:
     slab.thumbnail_url = f"/media/slabs/{slab.id}/{new_thumbnail_filename}"
 
 
-def build_image_url(request: Request, slab: Slab) -> str | None:
+def to_relative_url(url: str | None) -> str | None:
+    if not url:
+        return None
+
+    parsed = urlparse(url)
+    if parsed.scheme and parsed.netloc:
+        relative_path = parsed.path or "/"
+        return f"{relative_path}?{parsed.query}" if parsed.query else relative_path
+
+    return url
+
+
+def build_image_url(slab: Slab) -> str | None:
     if not slab.image_filename:
         return None
 
-    base_url = str(request.base_url).rstrip("/")
-    return f"{base_url}/media/slabs/{slab.id}/{slab.image_filename}"
+    return f"/media/slabs/{slab.id}/{slab.image_filename}"
 
 
-def build_thumbnail_url(request: Request, slab: Slab, image_url: str | None = None) -> str | None:
+def build_thumbnail_url(slab: Slab, image_url: str | None = None) -> str | None:
     if slab.thumbnail_url:
-        base_url = str(request.base_url).rstrip("/")
-        return f"{base_url}{slab.thumbnail_url}"
+        return to_relative_url(slab.thumbnail_url)
 
     return image_url
 
@@ -469,8 +480,8 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
     square_feet = calculate_square_feet(slab)
     total_price = calculate_total_price(square_feet, price_per_sqft)
 
-    image_url = build_image_url(request, slab)
-    thumbnail_url = build_thumbnail_url(request, slab, image_url)
+    image_url = build_image_url(slab)
+    thumbnail_url = build_thumbnail_url(slab, image_url)
 
     return {
         "id": slab.id,

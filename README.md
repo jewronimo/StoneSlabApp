@@ -211,3 +211,23 @@ This command only processes slabs missing `thumbnail_url` and skips unreadable i
 This project is currently in active development.
 
 The system is being built as a practical warehouse tool and is evolving toward a full inventory management solution for stone slab storage.
+
+
+## Reverse proxy HTTPS (single-origin)
+
+For production-style deployment behind a reverse proxy, expose the frontend and backend under one public HTTPS origin (for example `https://inventory.example.com`).
+
+Recommended routing pattern:
+- Browser-facing app (Next.js on `:3000`) served at `/`
+- API requests proxied to FastAPI (`:8000`)
+- Media URLs (for slab images/thumbnails) served from FastAPI static mount at `/media/...`
+- Download URLs served from FastAPI endpoints such as `/slabs/{slab_code}/image/download`
+
+Notes:
+- Slab images and thumbnails stay on disk in the existing `storage/slabs/<slab_id>/...` structure.
+- API now returns browser-safe relative media URLs (for example `/media/slabs/31/file.jpg`) so mixed-content issues from hardcoded backend HTTP origins are avoided behind HTTPS.
+- Run FastAPI with proxy headers enabled when TLS is terminated at the reverse proxy (example: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"`).
+
+Your reverse proxy still needs local routing rules to forward:
+- `/` to Next.js (`localhost:3000`)
+- API paths and `/media` to FastAPI (`localhost:8000`)

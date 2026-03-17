@@ -166,7 +166,7 @@ export default function NewSlabPage() {
       setLoadingOptions(true);
 
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
 
         const [materialsRes, finishesRes, statusesRes] = await Promise.allSettled(
           [
@@ -235,7 +235,7 @@ export default function NewSlabPage() {
   };
 
   const createSingleSlab = async (slabForm: SlabFormState, slabImage: File) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/slabs`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/slabs`, {
       method: 'POST',
       body: buildCreateFormData(slabForm, slabImage),
     });
@@ -254,7 +254,7 @@ export default function NewSlabPage() {
     previousSlabCode: string
   ) => {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/slabs/matched`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/slabs/matched`,
       {
         method: 'POST',
         body: buildCreateFormData(slabForm, slabImage, previousSlabCode),
