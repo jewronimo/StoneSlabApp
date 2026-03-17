@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
+import logging
 from pathlib import Path
 import argparse
 import re
@@ -66,6 +67,7 @@ ALLOWED_MATERIALS = {
 MONEY_QUANTIZE = Decimal("0.01")
 SQUARE_FEET_DIVISOR = Decimal("144")
 THUMBNAIL_SIZE = (640, 480)
+logger = logging.getLogger(__name__)
 
 
 def generate_slab_code(db: Session) -> str:
@@ -294,9 +296,7 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
     slab_dir = SLAB_IMAGES_ROOT / str(slab.id)
     slab_dir.mkdir(parents=True, exist_ok=True)
 
-    for existing_file in slab_dir.iterdir():
-        if existing_file.is_file():
-            existing_file.unlink()
+    cleanup_existing_slab_media(slab)
 
     stored_filename = build_slab_image_filename(slab, image.filename)
     destination = slab_dir / stored_filename
@@ -305,19 +305,44 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
 
     image_bytes = image.file.read()
 
-    with Image.open(BytesIO(image_bytes)) as pil_image:
-        corrected = ImageOps.exif_transpose(pil_image)
+    try:
+        with Image.open(BytesIO(image_bytes)) as pil_image:
+            corrected = ImageOps.exif_transpose(pil_image)
 
-        save_format = corrected.format or pil_image.format or "JPEG"
-        if save_format.upper() == "JPG":
-            save_format = "JPEG"
+            save_format = corrected.format or pil_image.format or "JPEG"
+            if save_format.upper() == "JPG":
+                save_format = "JPEG"
 
-        corrected.save(destination, format=save_format)
-        save_thumbnail_image(corrected, thumbnail_destination)
+            corrected.save(destination, format=save_format)
+            save_thumbnail_image(corrected, thumbnail_destination)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Uploaded image could not be processed") from exc
 
     slab.image_filename = stored_filename
     slab.image_content_type = content_type
     slab.thumbnail_url = f"/media/slabs/{slab.id}/{thumbnail_filename}"
+
+
+def cleanup_existing_slab_media(slab: Slab) -> None:
+    slab_dir = SLAB_IMAGES_ROOT / str(slab.id)
+    if not slab_dir.exists() or not slab_dir.is_dir():
+        return
+
+    candidate_names: set[str] = set()
+
+    if slab.image_filename:
+        candidate_names.add(Path(slab.image_filename).name)
+        candidate_names.add(build_slab_thumbnail_filename(slab.image_filename))
+
+    if slab.thumbnail_url:
+        thumbnail_name = Path(slab.thumbnail_url).name
+        if thumbnail_name:
+            candidate_names.add(thumbnail_name)
+
+    for candidate in candidate_names:
+        candidate_path = slab_dir / candidate
+        if candidate_path.exists() and candidate_path.is_file():
+            candidate_path.unlink()
 
 
 def rename_existing_slab_image(slab: Slab) -> None:
@@ -396,9 +421,11 @@ def backfill_missing_thumbnails(db: Session) -> dict[str, int]:
 
             slab.thumbnail_url = f"/media/slabs/{slab.id}/{thumbnail_filename}"
             counts["updated"] += 1
-        except OSError:
+        except OSError as exc:
+            logger.warning("Skipping thumbnail backfill for slab %s due to image error: %s", slab.id, exc)
             counts["skipped"] += 1
         except Exception:
+            logger.exception("Unexpected thumbnail backfill failure for slab %s", slab.id)
             counts["failed"] += 1
 
     db.commit()
