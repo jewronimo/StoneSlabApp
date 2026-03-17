@@ -30,4 +30,5 @@ class SlabResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     match_group_code: Optional[str] = None

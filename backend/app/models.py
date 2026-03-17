@@ -33,6 +33,7 @@ class Slab(Base):
 
     image_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     image_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     match_group_code: Mapped[str | None] = mapped_column(
         String(100), index=True, nullable=True
     )

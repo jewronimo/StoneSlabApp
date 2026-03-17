@@ -380,6 +380,7 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "created_at": slab.created_at,
         "updated_at": slab.updated_at,
         "image_url": build_image_url(request, slab),
+        "thumbnail_url": slab.thumbnail_url,
         "match_group_code": slab.match_group_code,
         "price_per_sqft": decimal_to_float(price_per_sqft),
         "square_feet": decimal_to_float(square_feet),
@@ -412,6 +413,9 @@ def ensure_slab_columns() -> None:
 
         if "price_per_sqft" not in columns:
             conn.execute(text("ALTER TABLE slabs ADD COLUMN price_per_sqft NUMERIC(10,2)"))
+
+        if "thumbnail_url" not in columns:
+            conn.execute(text("ALTER TABLE slabs ADD COLUMN thumbnail_url VARCHAR(500)"))
 
 
 @app.on_event("startup")
