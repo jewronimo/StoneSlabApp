@@ -1,0 +1,39 @@
+# StoneSlabApp reverse proxy (Task 7)
+#
+# Replace inventory.example.com with your public DNS hostname.
+# Caddy will automatically manage Let's Encrypt certificates for real hostnames.
+inventory.example.com {
+    encode gzip zstd
+
+    # FastAPI static/media files (full images + generated thumbnails)
+    reverse_proxy /media/* 127.0.0.1:8000
+
+    # FastAPI slab routes (CRUD + image download endpoint)
+    reverse_proxy /slabs/* 127.0.0.1:8000
+
+    # Optional FastAPI docs endpoints (keep/remove as preferred)
+    reverse_proxy /docs* 127.0.0.1:8000
+    reverse_proxy /openapi.json 127.0.0.1:8000
+    reverse_proxy /redoc* 127.0.0.1:8000
+
+    # Everything else is handled by Next.js frontend
+    reverse_proxy 127.0.0.1:3000
+}
+
+# Local/LAN HTTPS fallback (no public ACME certs needed)
+#
+# 1) Replace stone-slab.local with your LAN hostname.
+# 2) Install Caddy's local CA on client devices so browsers trust this cert:
+#    caddy trust
+stone-slab.local {
+    tls internal
+    encode gzip zstd
+
+    reverse_proxy /media/* 127.0.0.1:8000
+    reverse_proxy /slabs/* 127.0.0.1:8000
+    reverse_proxy /docs* 127.0.0.1:8000
+    reverse_proxy /openapi.json 127.0.0.1:8000
+    reverse_proxy /redoc* 127.0.0.1:8000
+
+    reverse_proxy 127.0.0.1:3000
+}

@@ -231,3 +231,50 @@ Notes:
 Your reverse proxy still needs local routing rules to forward:
 - `/` to Next.js (`localhost:3000`)
 - API paths and `/media` to FastAPI (`localhost:8000`)
+
+## Task 7: Caddy HTTPS reverse proxy setup
+
+A production-ready Caddy config is now included at the repo root: `./Caddyfile`.
+
+### What Caddy does
+
+- Terminates HTTPS for a single public origin.
+- Proxies frontend page traffic to Next.js on `127.0.0.1:3000`.
+- Proxies backend/API and image routes to FastAPI on `127.0.0.1:8000`.
+
+Explicit route mapping in `Caddyfile`:
+- `/media/*` -> FastAPI (`:8000`) for full images + thumbnails from existing storage folders.
+- `/slabs/*` -> FastAPI (`:8000`) for slab APIs and `/slabs/{slab_code}/image/download`.
+- all other paths -> Next.js (`:3000`).
+
+### HTTPS modes supported
+
+- **Public hostname** (recommended): use a real DNS hostname (example `inventory.example.com`) and Caddy auto-manages certificates.
+- **LAN/local hostname**: use the provided `stone-slab.local` site block with `tls internal` and trust Caddy's local CA on clients (`caddy trust`).
+
+### Backend startup behind TLS termination
+
+Start FastAPI with proxy headers enabled so request scheme/host are trusted behind Caddy:
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+```
+
+### Manual server steps
+
+1. Install Caddy on the server.
+2. Copy this repo's `Caddyfile` into Caddy's active config location (or run Caddy from the repo).
+3. Replace `inventory.example.com` and `stone-slab.local` with your actual server hostname(s).
+4. Keep Next.js running on `127.0.0.1:3000` and FastAPI on `127.0.0.1:8000`.
+5. Reload Caddy.
+
+### Storage and filename behavior (unchanged)
+
+- Existing disk storage layout remains `storage/slabs/<slab_id>/...`.
+- Original image names, thumbnail names, dimension-based naming, and rename-on-dimension-update behavior are unchanged.
+- Caddy only proxies requests; it does not alter application file handling.
+
+### Replacing current PC IP with server hostname/IP
+
+If your current setup references a workstation IP, replace it with the server hostname configured in Caddy (recommended) or the server IP/lan hostname used by the `tls internal` block.
