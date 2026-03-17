@@ -389,6 +389,14 @@ def build_image_url(request: Request, slab: Slab) -> str | None:
     return f"{base_url}/media/slabs/{slab.id}/{slab.image_filename}"
 
 
+def build_thumbnail_url(request: Request, slab: Slab, image_url: str | None = None) -> str | None:
+    if slab.thumbnail_url:
+        base_url = str(request.base_url).rstrip("/")
+        return f"{base_url}{slab.thumbnail_url}"
+
+    return image_url
+
+
 def backfill_missing_thumbnails(db: Session) -> dict[str, int]:
     counts = {"updated": 0, "skipped": 0, "failed": 0}
 
@@ -462,6 +470,7 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
     total_price = calculate_total_price(square_feet, price_per_sqft)
 
     image_url = build_image_url(request, slab)
+    thumbnail_url = build_thumbnail_url(request, slab, image_url)
 
     return {
         "id": slab.id,
@@ -484,7 +493,7 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "created_at": slab.created_at,
         "updated_at": slab.updated_at,
         "image_url": image_url,
-        "thumbnail_url": slab.thumbnail_url or image_url,
+        "thumbnail_url": thumbnail_url,
         "match_group_code": slab.match_group_code,
         "price_per_sqft": decimal_to_float(price_per_sqft),
         "square_feet": decimal_to_float(square_feet),
