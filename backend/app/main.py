@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from pathlib import Path
+import argparse
 import re
 from shutil import rmtree
 from uuid import uuid4
@@ -10,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
 
 from app.db import check_db_connection, engine, get_db
@@ -260,6 +261,16 @@ def build_slab_thumbnail_filename(image_filename: str) -> str:
     return f"{image_path.stem}_thumbnail.jpg"
 
 
+def save_thumbnail_image(source_image: Image.Image, destination: Path) -> None:
+    thumbnail_image = ImageOps.fit(
+        source_image.convert("RGB"),
+        THUMBNAIL_SIZE,
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.5),
+    )
+    thumbnail_image.save(destination, format="JPEG", quality=90)
+
+
 def cleanup_match_group_if_needed(db: Session, match_group_code: str | None) -> None:
     if not match_group_code:
         return
@@ -302,14 +313,7 @@ def save_slab_image(slab: Slab, image: UploadFile) -> None:
             save_format = "JPEG"
 
         corrected.save(destination, format=save_format)
-
-        thumbnail_image = ImageOps.fit(
-            corrected.convert("RGB"),
-            THUMBNAIL_SIZE,
-            method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5),
-        )
-        thumbnail_image.save(thumbnail_destination, format="JPEG", quality=90)
+        save_thumbnail_image(corrected, thumbnail_destination)
 
     slab.image_filename = stored_filename
     slab.image_content_type = content_type
@@ -360,6 +364,47 @@ def build_image_url(request: Request, slab: Slab) -> str | None:
     return f"{base_url}/media/slabs/{slab.id}/{slab.image_filename}"
 
 
+def backfill_missing_thumbnails(db: Session) -> dict[str, int]:
+    counts = {"updated": 0, "skipped": 0, "failed": 0}
+
+    slabs = (
+        db.query(Slab)
+        .filter(
+            Slab.image_filename.is_not(None),
+            Slab.image_filename != "",
+            or_(Slab.thumbnail_url.is_(None), Slab.thumbnail_url == ""),
+        )
+        .order_by(Slab.id.asc())
+        .all()
+    )
+
+    for slab in slabs:
+        slab_dir = SLAB_IMAGES_ROOT / str(slab.id)
+        image_path = slab_dir / slab.image_filename
+
+        if not image_path.exists() or not image_path.is_file():
+            counts["skipped"] += 1
+            continue
+
+        thumbnail_filename = build_slab_thumbnail_filename(slab.image_filename)
+        thumbnail_path = slab_dir / thumbnail_filename
+
+        try:
+            with Image.open(image_path) as source_image:
+                corrected = ImageOps.exif_transpose(source_image)
+                save_thumbnail_image(corrected, thumbnail_path)
+
+            slab.thumbnail_url = f"/media/slabs/{slab.id}/{thumbnail_filename}"
+            counts["updated"] += 1
+        except OSError:
+            counts["skipped"] += 1
+        except Exception:
+            counts["failed"] += 1
+
+    db.commit()
+    return counts
+
+
 def decimal_to_float(value: Decimal | float | None) -> float | None:
     if value is None:
         return None
@@ -389,6 +434,8 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
     square_feet = calculate_square_feet(slab)
     total_price = calculate_total_price(square_feet, price_per_sqft)
 
+    image_url = build_image_url(request, slab)
+
     return {
         "id": slab.id,
         "slab_code": slab.slab_code,
@@ -409,8 +456,8 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "is_active": slab.is_active,
         "created_at": slab.created_at,
         "updated_at": slab.updated_at,
-        "image_url": build_image_url(request, slab),
-        "thumbnail_url": slab.thumbnail_url,
+        "image_url": image_url,
+        "thumbnail_url": slab.thumbnail_url or image_url,
         "match_group_code": slab.match_group_code,
         "price_per_sqft": decimal_to_float(price_per_sqft),
         "square_feet": decimal_to_float(square_feet),
@@ -637,6 +684,33 @@ def create_slab(
     db.commit()
     db.refresh(slab)
     return serialize_slab(slab, request)
+
+
+def _run_backfill_from_cli() -> int:
+    parser = argparse.ArgumentParser(description="Stone Slab backend utilities")
+    parser.add_argument(
+        "--backfill-missing-thumbnails",
+        action="store_true",
+        help="Generate thumbnail files for slabs that have images but no thumbnail_url",
+    )
+    args = parser.parse_args()
+
+    if not args.backfill_missing_thumbnails:
+        parser.print_help()
+        return 0
+
+    with Session(engine) as db:
+        counts = backfill_missing_thumbnails(db)
+
+    print(
+        "Thumbnail backfill complete. "
+        f"Updated: {counts['updated']}, Skipped: {counts['skipped']}, Failed: {counts['failed']}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_backfill_from_cli())
 
 
 @app.get("/slabs", response_model=list[SlabResponse])
