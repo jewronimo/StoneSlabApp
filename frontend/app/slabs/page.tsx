@@ -104,11 +104,7 @@ export default function SlabsPage() {
       setError('');
 
       try {
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-        if (!apiBaseUrl) {
-          throw new Error('NEXT_PUBLIC_API_BASE_URL is not configured');
-        }
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
 
         const params = new URLSearchParams();
         params.set('include_inactive', String(showInactive));

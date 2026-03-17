@@ -159,7 +159,7 @@ export default function SlabDetailPage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const warehouseOptions = useMemo(() => {
