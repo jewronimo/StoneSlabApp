@@ -221,7 +221,7 @@ Recommended routing pattern:
 - Browser-facing app (Next.js on `:3000`) served at `/`
 - API requests proxied to FastAPI (`:8000`)
 - Media URLs (for slab images/thumbnails) served from FastAPI static mount at `/media/...`
-- Download URLs served from FastAPI endpoints such as `/slabs/{slab_code}/image/download`
+- Download URLs served from FastAPI endpoints such as `/api/slabs/{slab_code}/image/download`
 
 Notes:
 - Slab images and thumbnails stay on disk in the existing `storage/slabs/<slab_id>/...` structure.
@@ -244,7 +244,7 @@ A production-ready Caddy config is now included at the repo root: `./Caddyfile`.
 
 Explicit route mapping in `Caddyfile`:
 - `/media/*` -> FastAPI (`:8000`) for full images + thumbnails from existing storage folders.
-- `/slabs/*` -> FastAPI (`:8000`) for slab APIs and `/slabs/{slab_code}/image/download`.
+- `/api/*` -> FastAPI (`:8000`) for slab APIs and `/api/slabs/{slab_code}/image/download`.
 - all other paths -> Next.js (`:3000`).
 
 ### HTTPS modes supported
