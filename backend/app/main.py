@@ -564,22 +564,22 @@ def db_check():
     return {"db_connected": result == 1}
 
 
-@app.get("/finish-options")
+@app.get("/api/finish-options")
 def finish_options():
     return {"finishes": sorted(ALLOWED_FINISHES)}
 
 
-@app.get("/material-options")
+@app.get("/api/material-options")
 def get_material_options():
     return {"materials": sorted(ALLOWED_MATERIALS)}
 
 
-@app.get("/status-options")
+@app.get("/api/status-options")
 def get_status_options():
     return {"statuses": sorted(ALLOWED_STATUSES)}
 
 
-@app.post("/slabs/matched", response_model=SlabResponse)
+@app.post("/api/slabs/matched", response_model=SlabResponse)
 def create_matched_slab(
     request: Request,
     previous_slab_code: str = Form(...),
@@ -661,7 +661,7 @@ def create_matched_slab(
     return serialize_slab(slab, request)
 
 
-@app.post("/slabs", response_model=SlabResponse)
+@app.post("/api/slabs", response_model=SlabResponse)
 def create_slab(
     request: Request,
     material_name: str = Form(...),
@@ -760,7 +760,7 @@ if __name__ == "__main__":
     raise SystemExit(_run_backfill_from_cli())
 
 
-@app.get("/slabs", response_model=list[SlabResponse])
+@app.get("/api/slabs", response_model=list[SlabResponse])
 def list_slabs(
     request: Request,
     include_inactive: bool = False,
@@ -836,7 +836,7 @@ def list_slabs(
     return [serialize_slab(slab, request) for slab in slabs]
 
 
-@app.delete("/slabs/{slab_code}")
+@app.delete("/api/slabs/{slab_code}")
 def delete_slab(slab_code: str, db: Session = Depends(get_db)):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
@@ -859,7 +859,7 @@ def delete_slab(slab_code: str, db: Session = Depends(get_db)):
     return {"message": "Slab deleted"}
 
 
-@app.get("/slabs/{slab_code}", response_model=SlabResponse)
+@app.get("/api/slabs/{slab_code}", response_model=SlabResponse)
 def get_slab(slab_code: str, request: Request, db: Session = Depends(get_db)):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
@@ -867,7 +867,7 @@ def get_slab(slab_code: str, request: Request, db: Session = Depends(get_db)):
     return serialize_slab(slab, request)
 
 
-@app.get("/slabs/{slab_code}/matches", response_model=list[SlabResponse])
+@app.get("/api/slabs/{slab_code}/matches", response_model=list[SlabResponse])
 def get_slab_matches(
     slab_code: str,
     request: Request,
@@ -893,7 +893,7 @@ def get_slab_matches(
     return [serialize_slab(item, request) for item in matched_slabs]
 
 
-@app.get("/slabs/{slab_code}/image/download")
+@app.get("/api/slabs/{slab_code}/image/download")
 def download_slab_image(slab_code: str, db: Session = Depends(get_db)):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
@@ -915,7 +915,7 @@ def download_slab_image(slab_code: str, db: Session = Depends(get_db)):
     )
 
 
-@app.put("/slabs/{slab_code}", response_model=SlabResponse)
+@app.put("/api/slabs/{slab_code}", response_model=SlabResponse)
 def update_slab(
     slab_code: str,
     request: Request,
