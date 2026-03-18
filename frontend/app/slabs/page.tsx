@@ -104,8 +104,6 @@ export default function SlabsPage() {
       setError('');
 
       try {
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-
         const params = new URLSearchParams();
         params.set('include_inactive', String(showInactive));
 
@@ -120,7 +118,7 @@ export default function SlabsPage() {
           params.set('max_price_per_sqft', maxPricePerSqft);
         }
 
-        const res = await fetch(`${apiBaseUrl}/api/slabs?${params.toString()}`, {
+        const res = await fetch(`/api/slabs?${params.toString()}`, {
           cache: 'no-store',
         });
 

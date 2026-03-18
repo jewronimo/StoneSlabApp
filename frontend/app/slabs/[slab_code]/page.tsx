@@ -159,7 +159,6 @@ export default function SlabDetailPage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const warehouseOptions = useMemo(() => {
@@ -214,7 +213,7 @@ export default function SlabDetailPage() {
 
     const fetchSlab = async () => {
       try {
-        const res = await fetch(`${apiBase}/api/slabs/${slabCode}`, {
+        const res = await fetch(`/api/slabs/${slabCode}`, {
           cache: 'no-store',
         });
 
@@ -241,7 +240,7 @@ export default function SlabDetailPage() {
       setMatchesLoading(true);
 
       try {
-        const res = await fetch(`${apiBase}/api/slabs/${slabCode}/matches`, {
+        const res = await fetch(`/api/slabs/${slabCode}/matches`, {
           cache: 'no-store',
         });
 
@@ -265,7 +264,7 @@ export default function SlabDetailPage() {
 
     const fetchFinishOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/api/finish-options`, {
+        const res = await fetch('/api/finish-options', {
           cache: 'no-store',
         });
 
@@ -282,7 +281,7 @@ export default function SlabDetailPage() {
 
     const fetchMaterialOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/api/material-options`, {
+        const res = await fetch('/api/material-options', {
           cache: 'no-store',
         });
 
@@ -299,7 +298,7 @@ export default function SlabDetailPage() {
 
     const fetchStatusOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/api/status-options`, {
+        const res = await fetch('/api/status-options', {
           cache: 'no-store',
         });
 
@@ -322,7 +321,7 @@ export default function SlabDetailPage() {
     fetchFinishOptions();
     fetchMaterialOptions();
     fetchStatusOptions();
-  }, [apiBase, slabCode]);
+  }, [slabCode]);
 
   useEffect(() => {
     return () => {
@@ -334,7 +333,7 @@ export default function SlabDetailPage() {
 
   const refreshMatchedSlabs = async (code: string) => {
     try {
-      const res = await fetch(`${apiBase}/api/slabs/${code}/matches`, {
+      const res = await fetch(`/api/slabs/${code}/matches`, {
         cache: 'no-store',
       });
 
@@ -449,7 +448,7 @@ export default function SlabDetailPage() {
         formData.append('image', selectedImageFile);
       }
 
-      const res = await fetch(`${apiBase}/api/slabs/${slab.slab_code}`, {
+      const res = await fetch(`/api/slabs/${slab.slab_code}`, {
         method: 'PUT',
         body: formData,
       });
@@ -490,7 +489,7 @@ export default function SlabDetailPage() {
     setError('');
 
     try {
-      const res = await fetch(`${apiBase}/api/slabs/${encodeURIComponent(slabCode)}`, {
+      const res = await fetch(`/api/slabs/${encodeURIComponent(slabCode)}`, {
         method: 'DELETE',
       });
 
@@ -604,7 +603,7 @@ export default function SlabDetailPage() {
                     <div className="flex flex-wrap gap-3">
                       {(slab.image_url || imagePreviewSrc) && (
                         <a
-                          href={`${apiBase}/api/slabs/${encodeURIComponent(
+                          href={`/api/slabs/${encodeURIComponent(
                             slab.slab_code
                           )}/image/download`}
                           className="inline-block rounded-lg border border-black px-4 py-2 text-black"

@@ -166,13 +166,11 @@ export default function NewSlabPage() {
       setLoadingOptions(true);
 
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-
         const [materialsRes, finishesRes, statusesRes] = await Promise.allSettled(
           [
-            fetch(`${baseUrl}/api/material-options`, { cache: 'no-store' }),
-            fetch(`${baseUrl}/api/finish-options`, { cache: 'no-store' }),
-            fetch(`${baseUrl}/api/status-options`, { cache: 'no-store' }),
+            fetch('/api/material-options', { cache: 'no-store' }),
+            fetch('/api/finish-options', { cache: 'no-store' }),
+            fetch('/api/status-options', { cache: 'no-store' }),
           ]
         );
 
@@ -235,7 +233,7 @@ export default function NewSlabPage() {
   };
 
   const createSingleSlab = async (slabForm: SlabFormState, slabImage: File) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/api/slabs`, {
+    const res = await fetch('/api/slabs', {
       method: 'POST',
       body: buildCreateFormData(slabForm, slabImage),
     });
@@ -254,7 +252,7 @@ export default function NewSlabPage() {
     previousSlabCode: string
   ) => {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/api/slabs/matched`,
+      '/api/slabs/matched',
       {
         method: 'POST',
         body: buildCreateFormData(slabForm, slabImage, previousSlabCode),
