@@ -120,7 +120,7 @@ export default function SlabsPage() {
           params.set('max_price_per_sqft', maxPricePerSqft);
         }
 
-        const res = await fetch(`${apiBaseUrl}/slabs?${params.toString()}`, {
+        const res = await fetch(`${apiBaseUrl}/api/slabs?${params.toString()}`, {
           cache: 'no-store',
         });
 

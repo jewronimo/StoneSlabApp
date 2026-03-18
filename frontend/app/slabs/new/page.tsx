@@ -170,9 +170,9 @@ export default function NewSlabPage() {
 
         const [materialsRes, finishesRes, statusesRes] = await Promise.allSettled(
           [
-            fetch(`${baseUrl}/material-options`, { cache: 'no-store' }),
-            fetch(`${baseUrl}/finish-options`, { cache: 'no-store' }),
-            fetch(`${baseUrl}/status-options`, { cache: 'no-store' }),
+            fetch(`${baseUrl}/api/material-options`, { cache: 'no-store' }),
+            fetch(`${baseUrl}/api/finish-options`, { cache: 'no-store' }),
+            fetch(`${baseUrl}/api/status-options`, { cache: 'no-store' }),
           ]
         );
 
@@ -235,7 +235,7 @@ export default function NewSlabPage() {
   };
 
   const createSingleSlab = async (slabForm: SlabFormState, slabImage: File) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/slabs`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/api/slabs`, {
       method: 'POST',
       body: buildCreateFormData(slabForm, slabImage),
     });
@@ -254,7 +254,7 @@ export default function NewSlabPage() {
     previousSlabCode: string
   ) => {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/slabs/matched`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}/api/slabs/matched`,
       {
         method: 'POST',
         body: buildCreateFormData(slabForm, slabImage, previousSlabCode),

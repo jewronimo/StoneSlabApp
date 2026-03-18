@@ -214,7 +214,7 @@ export default function SlabDetailPage() {
 
     const fetchSlab = async () => {
       try {
-        const res = await fetch(`${apiBase}/slabs/${slabCode}`, {
+        const res = await fetch(`${apiBase}/api/slabs/${slabCode}`, {
           cache: 'no-store',
         });
 
@@ -241,7 +241,7 @@ export default function SlabDetailPage() {
       setMatchesLoading(true);
 
       try {
-        const res = await fetch(`${apiBase}/slabs/${slabCode}/matches`, {
+        const res = await fetch(`${apiBase}/api/slabs/${slabCode}/matches`, {
           cache: 'no-store',
         });
 
@@ -265,7 +265,7 @@ export default function SlabDetailPage() {
 
     const fetchFinishOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/finish-options`, {
+        const res = await fetch(`${apiBase}/api/finish-options`, {
           cache: 'no-store',
         });
 
@@ -282,7 +282,7 @@ export default function SlabDetailPage() {
 
     const fetchMaterialOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/material-options`, {
+        const res = await fetch(`${apiBase}/api/material-options`, {
           cache: 'no-store',
         });
 
@@ -299,7 +299,7 @@ export default function SlabDetailPage() {
 
     const fetchStatusOptions = async () => {
       try {
-        const res = await fetch(`${apiBase}/status-options`, {
+        const res = await fetch(`${apiBase}/api/status-options`, {
           cache: 'no-store',
         });
 
@@ -334,7 +334,7 @@ export default function SlabDetailPage() {
 
   const refreshMatchedSlabs = async (code: string) => {
     try {
-      const res = await fetch(`${apiBase}/slabs/${code}/matches`, {
+      const res = await fetch(`${apiBase}/api/slabs/${code}/matches`, {
         cache: 'no-store',
       });
 
@@ -449,7 +449,7 @@ export default function SlabDetailPage() {
         formData.append('image', selectedImageFile);
       }
 
-      const res = await fetch(`${apiBase}/slabs/${slab.slab_code}`, {
+      const res = await fetch(`${apiBase}/api/slabs/${slab.slab_code}`, {
         method: 'PUT',
         body: formData,
       });
@@ -490,7 +490,7 @@ export default function SlabDetailPage() {
     setError('');
 
     try {
-      const res = await fetch(`${apiBase}/slabs/${encodeURIComponent(slabCode)}`, {
+      const res = await fetch(`${apiBase}/api/slabs/${encodeURIComponent(slabCode)}`, {
         method: 'DELETE',
       });
 
@@ -604,7 +604,7 @@ export default function SlabDetailPage() {
                     <div className="flex flex-wrap gap-3">
                       {(slab.image_url || imagePreviewSrc) && (
                         <a
-                          href={`${apiBase}/slabs/${encodeURIComponent(
+                          href={`${apiBase}/api/slabs/${encodeURIComponent(
                             slab.slab_code
                           )}/image/download`}
                           className="inline-block rounded-lg border border-black px-4 py-2 text-black"
