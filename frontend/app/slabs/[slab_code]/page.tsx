@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { authHeaders, canDeleteSlabs, canEditSlabs, clearSession, getSession, type Role } from '../../lib/auth';
 
 type Slab = {
   id: number;
@@ -151,6 +152,7 @@ export default function SlabDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [role, setRole] = useState<Role | null>(null);
 
   const [finishOptions, setFinishOptions] = useState<string[]>([]);
   const [materialOptions, setMaterialOptions] = useState<string[]>([]);
@@ -204,17 +206,20 @@ export default function SlabDetailPage() {
   }, [slab, liveSquareFeet]);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem('loggedIn');
+    const session = getSession();
 
-    if (loggedIn !== 'true') {
+    if (!session) {
       window.location.href = '/';
       return;
     }
+
+    setRole(session.role);
 
     const fetchSlab = async () => {
       try {
         const res = await fetch(`/api/slabs/${slabCode}`, {
           cache: 'no-store',
+          headers: authHeaders(getSession()),
         });
 
         if (!res.ok) {
@@ -242,6 +247,7 @@ export default function SlabDetailPage() {
       try {
         const res = await fetch(`/api/slabs/${slabCode}/matches`, {
           cache: 'no-store',
+          headers: authHeaders(getSession()),
         });
 
         if (!res.ok) {
@@ -266,6 +272,7 @@ export default function SlabDetailPage() {
       try {
         const res = await fetch('/api/finish-options', {
           cache: 'no-store',
+          headers: authHeaders(getSession()),
         });
 
         if (!res.ok) {
@@ -283,6 +290,7 @@ export default function SlabDetailPage() {
       try {
         const res = await fetch('/api/material-options', {
           cache: 'no-store',
+          headers: authHeaders(getSession()),
         });
 
         if (!res.ok) {
@@ -300,6 +308,7 @@ export default function SlabDetailPage() {
       try {
         const res = await fetch('/api/status-options', {
           cache: 'no-store',
+          headers: authHeaders(getSession()),
         });
 
         if (!res.ok) {
@@ -352,11 +361,12 @@ export default function SlabDetailPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('loggedIn');
+    clearSession();
     window.location.href = '/';
   };
 
   const handleStartEdit = () => {
+    if (!canEditSlabs(role)) return;
     setError('');
     setSelectedImageFile(null);
 
@@ -400,6 +410,7 @@ export default function SlabDetailPage() {
   };
 
   const handleOpenImagePicker = () => {
+    if (!canEditSlabs(role)) return;
     if (!isEditing) {
       setIsEditing(true);
     }
@@ -410,7 +421,7 @@ export default function SlabDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!slab) return;
+    if (!slab || !canEditSlabs(role)) return;
 
     if (
       slab.status === 'reserved' &&
@@ -512,6 +523,12 @@ export default function SlabDetailPage() {
     slab?.status === 'reserved' &&
     (!slab.customer_name?.trim() || !slab.project_name?.trim());
 
+  useEffect(() => {
+    if (role && !canEditSlabs(role) && isEditing) {
+      setIsEditing(false);
+    }
+  }, [role, isEditing]);
+
   return (
     <>
       <main className="min-h-screen bg-gray-100 p-4 md:p-8">
@@ -534,21 +551,25 @@ export default function SlabDetailPage() {
 
             {!isEditing ? (
               <>
-                <button
-                  type="button"
-                  onClick={handleStartEdit}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-white"
-                >
-                  Edit
-                </button>
+                {canEditSlabs(role) && (
+                  <button
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                  >
+                    Edit
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteModal(true)}
-                  className="hidden rounded-lg bg-red-600 px-4 py-2 text-white sm:inline-block"
-                >
-                  Delete Slab
-                </button>
+                {canDeleteSlabs(role) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteModal(true)}
+                    className="hidden rounded-lg bg-red-600 px-4 py-2 text-white sm:inline-block"
+                  >
+                    Delete Slab
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -612,39 +633,45 @@ export default function SlabDetailPage() {
                         </a>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={handleOpenImagePicker}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-white"
-                      >
-                        {slab.image_url || imagePreviewSrc
-                          ? 'Replace image'
-                          : 'Take / Upload image'}
-                      </button>
+                      {canEditSlabs(role) && (
+                        <button
+                          type="button"
+                          onClick={handleOpenImagePicker}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                        >
+                          {slab.image_url || imagePreviewSrc
+                            ? 'Replace image'
+                            : 'Take / Upload image'}
+                        </button>
+                      )}
                     </div>
 
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
-                      className="hidden"
-                    />
+                    {canEditSlabs(role) && (
+                      <>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
+                          className="hidden"
+                        />
 
-                    {selectedImageFile && (
-                      <p className="text-sm text-gray-700">
-                        Selected file: {selectedImageFile.name}
-                      </p>
+                        {selectedImageFile && (
+                          <p className="text-sm text-gray-700">
+                            Selected file: {selectedImageFile.name}
+                          </p>
+                        )}
+
+                        <p className="text-sm text-gray-600">
+                          Image is mandatory. You can upload or replace it, but not
+                          delete it.
+                          {selectedImageFile
+                            ? ' Click Save to apply the new image.'
+                            : ''}
+                        </p>
+                      </>
                     )}
-
-                    <p className="text-sm text-gray-600">
-                      Image is mandatory. You can upload or replace it, but not
-                      delete it.
-                      {selectedImageFile
-                        ? ' Click Save to apply the new image.'
-                        : ''}
-                    </p>
                   </div>
                 </div>
 
@@ -1026,7 +1053,7 @@ export default function SlabDetailPage() {
                       Logout
                     </button>
 
-                    {!isEditing && (
+                    {!isEditing && canDeleteSlabs(role) && (
                       <button
                         type="button"
                         onClick={() => setShowDeleteModal(true)}
@@ -1043,7 +1070,7 @@ export default function SlabDetailPage() {
         </div>
       </main>
 
-      {showDeleteModal && (
+      {showDeleteModal && canDeleteSlabs(role) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h2 className="text-xl font-bold text-black">

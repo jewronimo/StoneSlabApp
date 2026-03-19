@@ -40,3 +40,20 @@ class PaginatedSlabResponse(BaseModel):
     page_size: int
     total: int
     total_pages: int
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class CurrentUserResponse(BaseModel):
+    username: str
+    role: str
+    is_active: bool
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: CurrentUserResponse

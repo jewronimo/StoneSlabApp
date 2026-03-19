@@ -16,9 +16,25 @@ from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db import check_db_connection, engine, get_db
-from app.models import Slab
-from app.schemas import PaginatedSlabResponse, SlabResponse
+from app.auth import (
+    ROLE_ADMIN,
+    ROLE_GUEST,
+    ROLE_WAREHOUSE_USER,
+    create_access_token,
+    ensure_seed_users,
+    get_current_user,
+    require_roles,
+    verify_password,
+)
+from app.db import SessionLocal, check_db_connection, engine, get_db
+from app.models import AuditLog, Slab, User
+from app.schemas import (
+    AuthResponse,
+    CurrentUserResponse,
+    LoginRequest,
+    PaginatedSlabResponse,
+    SlabResponse,
+)
 
 
 app = FastAPI(title="Stone Slab API")
@@ -69,6 +85,32 @@ MONEY_QUANTIZE = Decimal("0.01")
 SQUARE_FEET_DIVISOR = Decimal("144")
 THUMBNAIL_SIZE = (640, 480)
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+def seed_default_users() -> None:
+    with SessionLocal() as db:
+        ensure_seed_users(db)
+
+
+def create_audit_log(
+    db: Session,
+    *,
+    actor: User,
+    action_type: str,
+    slab: Slab | None = None,
+    details: str | None = None,
+) -> None:
+    db.add(
+        AuditLog(
+            actor_username=actor.username,
+            actor_role=actor.role,
+            action_type=action_type,
+            slab_id=slab.id if slab else None,
+            slab_code=slab.slab_code if slab else None,
+            details=details,
+        )
+    )
 
 
 def generate_slab_code(db: Session) -> str:
@@ -529,18 +571,56 @@ def db_check():
 
 
 @app.get("/api/finish-options")
-def finish_options():
+def finish_options(current_user: User = Depends(get_current_user)):
     return {"finishes": sorted(ALLOWED_FINISHES)}
 
 
 @app.get("/api/material-options")
-def get_material_options():
+def get_material_options(current_user: User = Depends(get_current_user)):
     return {"materials": sorted(ALLOWED_MATERIALS)}
 
 
 @app.get("/api/status-options")
-def get_status_options():
+def get_status_options(current_user: User = Depends(get_current_user)):
     return {"statuses": sorted(ALLOWED_STATUSES)}
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    username = payload.username.strip()
+    user = db.query(User).filter(User.username == username).first()
+
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User is inactive")
+
+    token = create_access_token(username=user.username, role=user.role)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"username": user.username, "role": user.role, "is_active": user.is_active},
+    }
+
+
+@app.post("/api/auth/guest-login", response_model=AuthResponse)
+def guest_login(db: Session = Depends(get_db)):
+    guest_user = db.query(User).filter(User.role == ROLE_GUEST, User.is_active.is_(True)).first()
+    if not guest_user:
+        raise HTTPException(status_code=500, detail="Guest account is not configured")
+
+    token = create_access_token(username=guest_user.username, role=guest_user.role)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"username": guest_user.username, "role": guest_user.role, "is_active": guest_user.is_active},
+    }
+
+
+@app.get("/api/auth/me", response_model=CurrentUserResponse)
+def me(current_user: User = Depends(get_current_user)):
+    return {"username": current_user.username, "role": current_user.role, "is_active": current_user.is_active}
 
 
 @app.post("/api/slabs/matched", response_model=SlabResponse)
@@ -561,6 +641,7 @@ def create_matched_slab(
     price_per_sqft: str | None = Form(None),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER)),
 ):
     previous_slab_code_clean = clean_required_text(previous_slab_code, "previous_slab_code")
 
@@ -618,6 +699,13 @@ def create_matched_slab(
     db.flush()
 
     save_slab_image(slab, image)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action_type="slab.create_matched",
+        slab=slab,
+        details=f"match_group_code={slab.match_group_code}",
+    )
 
     db.commit()
     db.refresh(slab)
@@ -643,6 +731,7 @@ def create_slab(
     price_per_sqft: str | None = Form(None),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER)),
 ):
     material_name_clean = clean_required_text(material_name, "material_name")
     height_clean = validate_dimension_text(height, "height")
@@ -691,6 +780,7 @@ def create_slab(
     db.flush()
 
     save_slab_image(slab, image)
+    create_audit_log(db, actor=current_user, action_type="slab.create", slab=slab)
 
     db.commit()
     db.refresh(slab)
@@ -747,6 +837,7 @@ def list_slabs(
     page: int = 1,
     page_size: int = 21,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER, ROLE_GUEST)),
 ):
     if page < 1:
         raise HTTPException(status_code=400, detail="page must be >= 1")
@@ -841,13 +932,19 @@ def list_slabs(
 
 
 @app.delete("/api/slabs/{slab_code}")
-def delete_slab(slab_code: str, db: Session = Depends(get_db)):
+def delete_slab(
+    slab_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN)),
+):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
         raise HTTPException(status_code=404, detail="Slab not found")
 
     slab_id = slab.id
     match_group_code = slab.match_group_code
+
+    create_audit_log(db, actor=current_user, action_type="slab.delete", slab=slab)
 
     db.delete(slab)
     db.flush()
@@ -864,7 +961,12 @@ def delete_slab(slab_code: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/slabs/{slab_code}", response_model=SlabResponse)
-def get_slab(slab_code: str, request: Request, db: Session = Depends(get_db)):
+def get_slab(
+    slab_code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER, ROLE_GUEST)),
+):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
         raise HTTPException(status_code=404, detail="Slab not found")
@@ -877,6 +979,7 @@ def get_slab_matches(
     request: Request,
     include_inactive: bool = False,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER, ROLE_GUEST)),
 ):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
@@ -898,7 +1001,11 @@ def get_slab_matches(
 
 
 @app.get("/api/slabs/{slab_code}/image/download")
-def download_slab_image(slab_code: str, db: Session = Depends(get_db)):
+def download_slab_image(
+    slab_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER, ROLE_GUEST)),
+):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
         raise HTTPException(status_code=404, detail="Slab not found")
@@ -937,12 +1044,20 @@ def update_slab(
     price_per_sqft: str | None = Form(None),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(ROLE_ADMIN, ROLE_WAREHOUSE_USER)),
 ):
     slab = db.query(Slab).filter(Slab.slab_code == slab_code).first()
     if not slab:
         raise HTTPException(status_code=404, detail="Slab not found")
 
     existing_match_group_code = slab.match_group_code
+    original_values = {
+        "warehouse_group": slab.warehouse_group,
+        "status": slab.status,
+        "customer_name": slab.customer_name,
+        "project_name": slab.project_name,
+        "item_description": slab.item_description,
+    }
 
     material_name_clean = clean_required_text(material_name, "material_name")
     height_clean = validate_dimension_text(height, "height")
@@ -993,12 +1108,32 @@ def update_slab(
     slab.is_active = status_clean != "used"
     slab.price_per_sqft = price_per_sqft_value
 
+    changed_fields: list[str] = []
+    for field_name, old_val in [
+        ("warehouse_group", original_values["warehouse_group"]),
+        ("status", original_values["status"]),
+        ("customer_name", original_values["customer_name"]),
+        ("project_name", original_values["project_name"]),
+        ("item_description", original_values["item_description"]),
+    ]:
+        if getattr(slab, field_name) != old_val:
+            changed_fields.append(field_name)
+
+    action_type = "slab.update"
     if image is not None and image.filename:
         save_slab_image(slab, image)
+        action_type = "slab.image_upload_replace"
     elif dimensions_changed:
         rename_existing_slab_image(slab)
 
     cleanup_match_group_if_needed(db, existing_match_group_code)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action_type=action_type,
+        slab=slab,
+        details=("changed_fields=" + ",".join(changed_fields)) if changed_fields else None,
+    )
 
     db.commit()
     db.refresh(slab)
