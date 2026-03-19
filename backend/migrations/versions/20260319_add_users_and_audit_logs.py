@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 
-revision = "20260319_add_users_and_audit_logs"
+revision = "20260319_add_users_audit_logs"
 down_revision = "20260319_add_slab_filter_indexes"
 branch_labels = None
 depends_on = None
