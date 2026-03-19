@@ -11,7 +11,7 @@ from sqlalchemy import inspect
 
 
 revision = "20260317_add_thumbnail_url"
-down_revision = None
+down_revision = "20260316_create_slabs_table"
 branch_labels = None
 depends_on = None
 
