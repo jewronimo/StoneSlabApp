@@ -764,6 +764,7 @@ if __name__ == "__main__":
 def list_slabs(
     request: Request,
     include_inactive: bool = False,
+    porosity: bool = False,
     material_name: str | None = None,
     finish: str | None = None,
     status: str | None = None,
@@ -780,7 +781,7 @@ def list_slabs(
     min_price_per_sqft: float | None = None,
     max_price_per_sqft: float | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 21,
     db: Session = Depends(get_db),
 ):
     if page < 1:
@@ -792,6 +793,9 @@ def list_slabs(
 
     if not include_inactive:
         query = query.filter(Slab.is_active.is_(True))
+
+    if porosity:
+        query = query.filter(Slab.porosity.is_(True))
 
     if material_name:
         material_lookup = {m.lower(): m for m in ALLOWED_MATERIALS}

@@ -66,7 +66,7 @@ export default function SlabsPage() {
   const [slabs, setSlabs] = useState<Slab[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
-    page_size: 20,
+    page_size: 21,
     total: 0,
     total_pages: 0,
   });
@@ -93,6 +93,7 @@ export default function SlabsPage() {
   const maxThickness = searchParams.get('max_thickness') ?? '';
   const maxPricePerSqft = searchParams.get('maxPricePerSqft') ?? '';
   const showInactive = searchParams.get('showInactive') === 'true';
+  const porosityOnly = searchParams.get('porosity') === 'true';
   const currentPage = Number(searchParams.get('page') ?? '1') || 1;
 
   const warehouseOptions = useMemo(() => {
@@ -145,8 +146,9 @@ export default function SlabsPage() {
       try {
         const params = new URLSearchParams();
         params.set('include_inactive', String(showInactive));
+        params.set('porosity', String(porosityOnly));
         params.set('page', String(currentPage));
-        params.set('page_size', '20');
+        params.set('page_size', '21');
 
         if (materialFilter) params.set('material_name', materialFilter);
         if (finishFilter) params.set('finish', finishFilter);
@@ -182,7 +184,7 @@ export default function SlabsPage() {
         setSlabs(Array.isArray(data.items) ? data.items : []);
         setPagination({
           page: data.page ?? 1,
-          page_size: data.page_size ?? 20,
+          page_size: data.page_size ?? 21,
           total: data.total ?? 0,
           total_pages: data.total_pages ?? 0,
         });
@@ -216,6 +218,7 @@ export default function SlabsPage() {
     minThickness,
     maxThickness,
     maxPricePerSqft,
+    porosityOnly,
   ]);
 
   const handleLogout = () => {
@@ -445,20 +448,37 @@ export default function SlabsPage() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <label className="flex items-center gap-2 text-sm font-medium text-black">
-                <input
-                  id="showInactive"
-                  type="checkbox"
-                  checked={showInactive}
-                  onChange={(e) =>
-                    updateParams({
-                      showInactive: e.target.checked,
-                      page: '1',
-                    })
-                  }
-                />
-                Show used / inactive slabs
-              </label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+                <label className="flex items-center gap-2 text-sm font-medium text-black">
+                  <input
+                    id="showInactive"
+                    type="checkbox"
+                    checked={showInactive}
+                    onChange={(e) =>
+                      updateParams({
+                        showInactive: e.target.checked,
+                        page: '1',
+                      })
+                    }
+                  />
+                  Show used / inactive slabs
+                </label>
+
+                <label className="flex items-center gap-2 text-sm font-medium text-black">
+                  <input
+                    id="porosity"
+                    type="checkbox"
+                    checked={porosityOnly}
+                    onChange={(e) =>
+                      updateParams({
+                        porosity: e.target.checked,
+                        page: '1',
+                      })
+                    }
+                  />
+                  Porosity only
+                </label>
+              </div>
 
               <button
                 onClick={clearFilters}
