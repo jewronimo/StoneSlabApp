@@ -9,9 +9,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# Adjust these imports only if your project defines them elsewhere
+from app.config import DATABASE_URL
 from app.models import Base
-from app.main import DATABASE_URL
 
 config = context.config
 
