@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.db import check_db_connection, engine, get_db
 from app.models import Base, Slab
-from app.schemas import SlabResponse
+from app.schemas import PaginatedSlabResponse, SlabResponse
 
 
 app = FastAPI(title="Stone Slab API")
@@ -760,12 +760,17 @@ if __name__ == "__main__":
     raise SystemExit(_run_backfill_from_cli())
 
 
-@app.get("/api/slabs", response_model=list[SlabResponse])
+@app.get("/api/slabs", response_model=PaginatedSlabResponse)
 def list_slabs(
     request: Request,
     include_inactive: bool = False,
+    material_name: str | None = None,
+    finish: str | None = None,
     status: str | None = None,
     warehouse_group: str | None = None,
+    item_description: str | None = None,
+    customer_name: str | None = None,
+    project_name: str | None = None,
     min_height: float | None = None,
     max_height: float | None = None,
     min_width: float | None = None,
@@ -774,12 +779,39 @@ def list_slabs(
     max_thickness: float | None = None,
     min_price_per_sqft: float | None = None,
     max_price_per_sqft: float | None = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
 ):
+    if page < 1:
+        raise HTTPException(status_code=400, detail="page must be >= 1")
+    if page_size < 1:
+        raise HTTPException(status_code=400, detail="page_size must be >= 1")
+
     query = db.query(Slab)
 
     if not include_inactive:
         query = query.filter(Slab.is_active.is_(True))
+
+    if material_name:
+        material_lookup = {m.lower(): m for m in ALLOWED_MATERIALS}
+        material_clean = material_lookup.get(material_name.strip().lower())
+        if not material_clean:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid material_name. Allowed: {sorted(ALLOWED_MATERIALS)}",
+            )
+        query = query.filter(Slab.material_name == material_clean)
+
+    if finish:
+        finish_lookup = {f.lower(): f for f in ALLOWED_FINISHES}
+        finish_clean = finish_lookup.get(finish.strip().lower())
+        if not finish_clean:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid finish. Allowed: {sorted(ALLOWED_FINISHES)}",
+            )
+        query = query.filter(Slab.finish == finish_clean)
 
     if status:
         status_clean = status.lower().strip()
@@ -793,6 +825,17 @@ def list_slabs(
     if warehouse_group:
         warehouse_group_clean = validate_warehouse_group(warehouse_group)
         query = query.filter(Slab.warehouse_group == warehouse_group_clean)
+
+    item_description_clean = item_description.strip() if item_description else ""
+    customer_name_clean = customer_name.strip() if customer_name else ""
+    project_name_clean = project_name.strip() if project_name else ""
+
+    if item_description_clean:
+        query = query.filter(Slab.item_description.ilike(f"%{item_description_clean}%"))
+    if customer_name_clean:
+        query = query.filter(Slab.customer_name.ilike(f"%{customer_name_clean}%"))
+    if project_name_clean:
+        query = query.filter(Slab.project_name.ilike(f"%{project_name_clean}%"))
 
     if min_height is not None:
         query = query.filter(Slab.height_value >= min_height)
@@ -814,26 +857,19 @@ def list_slabs(
     if max_price_per_sqft is not None:
         query = query.filter(Slab.price_per_sqft <= max_price_per_sqft)
 
-    is_default_load = (
-        include_inactive is False
-        and status is None
-        and warehouse_group is None
-        and min_height is None
-        and max_height is None
-        and min_width is None
-        and max_width is None
-        and min_thickness is None
-        and max_thickness is None
-        and min_price_per_sqft is None
-        and max_price_per_sqft is None
-    )
+    total = query.count()
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    offset = (page - 1) * page_size
 
-    if is_default_load:
-        slabs = query.order_by(Slab.id.desc()).limit(20).all()
-    else:
-        slabs = query.order_by(Slab.id.desc()).all()
+    slabs = query.order_by(Slab.id.desc()).offset(offset).limit(page_size).all()
 
-    return [serialize_slab(slab, request) for slab in slabs]
+    return {
+        "items": [serialize_slab(slab, request) for slab in slabs],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
 
 
 @app.delete("/api/slabs/{slab_code}")
