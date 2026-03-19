@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { authHeaders, canEditSlabs, getSession, type Role } from '../../lib/auth';
 
 type CreateSlabResponse = {
   id?: number;
@@ -137,6 +138,7 @@ export default function NewSlabPage() {
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [role, setRole] = useState<Role | null>(null);
 
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [lastSavedSlab, setLastSavedSlab] =
@@ -154,10 +156,16 @@ export default function NewSlabPage() {
   }, []);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem('loggedIn');
-
-    if (loggedIn !== 'true') {
+    const session = getSession();
+    if (!session) {
       router.replace('/');
+      return;
+    }
+
+    setRole(session.role);
+
+    if (!canEditSlabs(session.role)) {
+      router.replace('/slabs');
     }
   }, [router]);
 
@@ -168,9 +176,9 @@ export default function NewSlabPage() {
       try {
         const [materialsRes, finishesRes, statusesRes] = await Promise.allSettled(
           [
-            fetch('/api/material-options', { cache: 'no-store' }),
-            fetch('/api/finish-options', { cache: 'no-store' }),
-            fetch('/api/status-options', { cache: 'no-store' }),
+            fetch('/api/material-options', { cache: 'no-store', headers: authHeaders(getSession()) }),
+            fetch('/api/finish-options', { cache: 'no-store', headers: authHeaders(getSession()) }),
+            fetch('/api/status-options', { cache: 'no-store', headers: authHeaders(getSession()) }),
           ]
         );
 
@@ -235,6 +243,7 @@ export default function NewSlabPage() {
   const createSingleSlab = async (slabForm: SlabFormState, slabImage: File) => {
     const res = await fetch('/api/slabs', {
       method: 'POST',
+      headers: authHeaders(getSession()),
       body: buildCreateFormData(slabForm, slabImage),
     });
 
@@ -255,6 +264,7 @@ export default function NewSlabPage() {
       '/api/slabs/matched',
       {
         method: 'POST',
+        headers: authHeaders(getSession()),
         body: buildCreateFormData(slabForm, slabImage, previousSlabCode),
       }
     );
@@ -326,6 +336,10 @@ export default function NewSlabPage() {
   };
 
   const reservedSelected = form.status === 'reserved';
+
+  if (role && !canEditSlabs(role)) {
+    return null;
+  }
 
   return (
     <>

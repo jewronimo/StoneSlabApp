@@ -278,3 +278,78 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allo
 ### Replacing current PC IP with server hostname/IP
 
 If your current setup references a workstation IP, replace it with the server hostname configured in Caddy (recommended) or the server IP/lan hostname used by the `tls internal` block.
+
+## RBAC and authentication
+
+StoneSlabApp now enforces role-based access control (RBAC) on both backend API endpoints and frontend UI flows.
+
+### Roles
+
+- `admin`
+  - Full access, including slab create/update/delete and image upload/replace.
+  - Can access admin-only areas/endpoints (user/system operations when present).
+- `warehouse_user`
+  - Can view/search/filter slabs and open detail pages.
+  - Can create and update slabs, including image upload/replace.
+  - Cannot delete slabs and cannot access admin-only system actions.
+- `guest`
+  - Read-only.
+  - Can view/search/filter slabs, open detail pages, and view/download slab images.
+  - Cannot create/update/delete slabs or upload/replace images.
+
+### Backend enforcement
+
+API authorization is now checked server-side and returns `403` for role-forbidden actions:
+
+- `GET /api/slabs*` and slab read routes: `admin`, `warehouse_user`, `guest`
+- `POST /api/slabs*`: `admin`, `warehouse_user`
+- `PUT /api/slabs/{slab_code}`: `admin`, `warehouse_user`
+- `DELETE /api/slabs/{slab_code}`: `admin` only
+
+### Guest login configuration
+
+A generic guest account is automatically ensured at backend startup.
+
+Configure credentials through environment variables (backend):
+
+- `DEFAULT_GUEST_USERNAME` (default: `guest`)
+- `DEFAULT_GUEST_PASSWORD` (default: `guest-readonly`)
+
+Admin defaults can also be configured:
+
+- `DEFAULT_ADMIN_USERNAME` (default: `admin`)
+- `DEFAULT_ADMIN_PASSWORD` (default: `admin`)
+
+Additional auth settings:
+
+- `AUTH_SECRET_KEY`
+- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: `720`)
+
+Frontend login screen supports:
+
+- standard username/password login
+- **Continue as Guest (read-only)** using backend-configured guest account
+
+### Migrations
+
+Run Alembic migrations to create auth/audit tables:
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+This includes:
+
+- `users` table (`username`, `password_hash`, `role`, `is_active`, `created_at`)
+- `audit_logs` table (actor, role, action, slab reference, timestamp)
+
+### Audit logging
+
+Lightweight audit logs are stored for key write actions:
+
+- slab create
+- matched slab create
+- slab update (including changed operational fields summary)
+- image upload/replace
+- slab delete
