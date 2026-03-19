@@ -13,11 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
-from sqlalchemy import inspect, or_, text
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db import check_db_connection, engine, get_db
-from app.models import Base, Slab
+from app.models import Slab
 from app.schemas import PaginatedSlabResponse, SlabResponse
 
 
@@ -510,42 +510,6 @@ def serialize_slab(slab: Slab, request: Request) -> dict:
         "square_feet": decimal_to_float(square_feet),
         "total_price": decimal_to_float(total_price),
     }
-
-
-def ensure_slab_columns() -> None:
-    inspector = inspect(engine)
-    if not inspector.has_table("slabs"):
-        return
-
-    columns = {column["name"] for column in inspector.get_columns("slabs")}
-
-    with engine.begin() as conn:
-        if "height_value" not in columns:
-            conn.execute(text("ALTER TABLE slabs ADD COLUMN height_value FLOAT"))
-            conn.execute(text("UPDATE slabs SET height_value = 0 WHERE height_value IS NULL"))
-            conn.execute(text("ALTER TABLE slabs ALTER COLUMN height_value SET NOT NULL"))
-
-        if "width_value" not in columns:
-            conn.execute(text("ALTER TABLE slabs ADD COLUMN width_value FLOAT"))
-            conn.execute(text("UPDATE slabs SET width_value = 0 WHERE width_value IS NULL"))
-            conn.execute(text("ALTER TABLE slabs ALTER COLUMN width_value SET NOT NULL"))
-
-        if "thickness_value" not in columns:
-            conn.execute(text("ALTER TABLE slabs ADD COLUMN thickness_value FLOAT"))
-            conn.execute(text("UPDATE slabs SET thickness_value = 0 WHERE thickness_value IS NULL"))
-            conn.execute(text("ALTER TABLE slabs ALTER COLUMN thickness_value SET NOT NULL"))
-
-        if "price_per_sqft" not in columns:
-            conn.execute(text("ALTER TABLE slabs ADD COLUMN price_per_sqft NUMERIC(10,2)"))
-
-        if "thumbnail_url" not in columns:
-            conn.execute(text("ALTER TABLE slabs ADD COLUMN thumbnail_url VARCHAR(500)"))
-
-
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
-    ensure_slab_columns()
 
 
 @app.get("/")
