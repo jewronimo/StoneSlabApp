@@ -145,7 +145,7 @@ Supported input formats include:
 
 - On slab create/update, dimension text is parsed and numeric values are stored.
 - Backend slab filtering now uses numeric dimension values instead of string comparison.
-- Default slab list load returns the latest 20 slabs.
+- Default slab list load returns the latest 21 slabs.
 - When filters are applied, filtering runs against the full dataset.
 
 ### Important database note
@@ -180,7 +180,7 @@ ALTER TABLE slabs ADD COLUMN thickness_value NUMERIC(10,4);
 ### Dimensions and filtering
 - Slab dimensions are stored both as display text and numeric values
 - Backend filtering uses numeric dimension values instead of string comparison
-- Default slab gallery load returns the latest 20 slabs
+- Default slab gallery load returns the latest 21 slabs
 - Supported numeric filtering includes:
   - height
   - width
