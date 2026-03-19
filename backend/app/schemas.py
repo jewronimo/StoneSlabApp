@@ -32,3 +32,11 @@ class SlabResponse(BaseModel):
     image_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     match_group_code: Optional[str] = None
+
+
+class PaginatedSlabResponse(BaseModel):
+    items: list[SlabResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int

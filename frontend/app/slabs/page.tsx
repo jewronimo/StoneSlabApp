@@ -32,8 +32,44 @@ type Slab = {
   total_price?: number | null;
 };
 
+type PaginatedSlabResponse = {
+  items: Slab[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+const MATERIAL_OPTIONS = [
+  'Granite',
+  'Marble',
+  'Quartz',
+  'Travertine',
+  'Onyx',
+  'Limestone',
+  'Quartzite',
+  'Misc',
+];
+
+const FINISH_OPTIONS = [
+  'Flamed',
+  'Brushed',
+  'Polished',
+  'Honed',
+  'Leathered',
+  'Sandblasted',
+];
+
+const STATUS_OPTIONS = ['available', 'reserved', 'used'];
+
 export default function SlabsPage() {
   const [slabs, setSlabs] = useState<Slab[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: 20,
+    total: 0,
+    total_pages: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -41,20 +77,23 @@ export default function SlabsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const searchTerm = searchParams.get('q') ?? '';
-  const searchTerm2 = searchParams.get('q2') ?? '';
-  const showSecondarySearch = searchParams.get('showSecondarySearch') === 'true';
-
   const materialFilter = searchParams.get('material') ?? '';
   const finishFilter = searchParams.get('finish') ?? '';
   const statusFilter = searchParams.get('status') ?? '';
   const warehouseFilter = searchParams.get('warehouse_group') ?? '';
+  const itemDescriptionFilter = searchParams.get('item_description') ?? '';
+  const customerNameFilter = searchParams.get('customer_name') ?? '';
+  const projectNameFilter = searchParams.get('project_name') ?? '';
 
-  const minHeight = searchParams.get('minHeight') ?? '';
-  const minWidth = searchParams.get('minWidth') ?? '';
-  const minThickness = searchParams.get('minThickness') ?? '';
+  const minHeight = searchParams.get('min_height') ?? '';
+  const maxHeight = searchParams.get('max_height') ?? '';
+  const minWidth = searchParams.get('min_width') ?? '';
+  const maxWidth = searchParams.get('max_width') ?? '';
+  const minThickness = searchParams.get('min_thickness') ?? '';
+  const maxThickness = searchParams.get('max_thickness') ?? '';
   const maxPricePerSqft = searchParams.get('maxPricePerSqft') ?? '';
   const showInactive = searchParams.get('showInactive') === 'true';
+  const currentPage = Number(searchParams.get('page') ?? '1') || 1;
 
   const warehouseOptions = useMemo(() => {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -106,12 +145,24 @@ export default function SlabsPage() {
       try {
         const params = new URLSearchParams();
         params.set('include_inactive', String(showInactive));
+        params.set('page', String(currentPage));
+        params.set('page_size', '20');
 
+        if (materialFilter) params.set('material_name', materialFilter);
+        if (finishFilter) params.set('finish', finishFilter);
         if (statusFilter) params.set('status', statusFilter);
         if (warehouseFilter) params.set('warehouse_group', warehouseFilter);
+        if (itemDescriptionFilter) {
+          params.set('item_description', itemDescriptionFilter);
+        }
+        if (customerNameFilter) params.set('customer_name', customerNameFilter);
+        if (projectNameFilter) params.set('project_name', projectNameFilter);
         if (minHeight) params.set('min_height', minHeight);
+        if (maxHeight) params.set('max_height', maxHeight);
         if (minWidth) params.set('min_width', minWidth);
+        if (maxWidth) params.set('max_width', maxWidth);
         if (minThickness) params.set('min_thickness', minThickness);
+        if (maxThickness) params.set('max_thickness', maxThickness);
 
         if (maxPricePerSqft) {
           params.set('min_price_per_sqft', '0');
@@ -127,8 +178,14 @@ export default function SlabsPage() {
           throw new Error(`Failed to fetch slabs: ${errorText}`);
         }
 
-        const data = await res.json();
-        setSlabs(Array.isArray(data) ? data : []);
+        const data: PaginatedSlabResponse = await res.json();
+        setSlabs(Array.isArray(data.items) ? data.items : []);
+        setPagination({
+          page: data.page ?? 1,
+          page_size: data.page_size ?? 20,
+          total: data.total ?? 0,
+          total_pages: data.total_pages ?? 0,
+        });
       } catch (err) {
         setError(
           err instanceof Error
@@ -144,11 +201,20 @@ export default function SlabsPage() {
     fetchSlabs();
   }, [
     showInactive,
+    currentPage,
+    materialFilter,
+    finishFilter,
     statusFilter,
     warehouseFilter,
+    itemDescriptionFilter,
+    customerNameFilter,
+    projectNameFilter,
     minHeight,
+    maxHeight,
     minWidth,
+    maxWidth,
     minThickness,
+    maxThickness,
     maxPricePerSqft,
   ]);
 
@@ -160,36 +226,6 @@ export default function SlabsPage() {
   const clearFilters = () => {
     router.replace(pathname, { scroll: false });
   };
-
-  const materialOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        slabs
-          .map((slab) => slab.material_name?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [slabs]);
-
-  const finishOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        slabs
-          .map((slab) => slab.finish?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [slabs]);
-
-  const statusOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        slabs
-          .map((slab) => slab.status?.trim())
-          .filter((value): value is string => Boolean(value))
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [slabs]);
 
   const matchGroupCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -205,54 +241,6 @@ export default function SlabsPage() {
 
     return counts;
   }, [slabs]);
-
-  const filteredSlabs = useMemo(() => {
-    return slabs.filter((slab) => {
-      const searchableText = [
-        slab.material_name,
-        slab.finish,
-        slab.status,
-        slab.customer_name,
-        slab.project_name,
-        slab.item_description,
-        slab.porosity === true
-          ? 'porous'
-          : slab.porosity === false
-          ? 'non-porous'
-          : '',
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      const matchesSearch = searchableText.includes(searchTerm.toLowerCase());
-
-      const matchesSecondarySearch =
-        showSecondarySearch && searchTerm2
-          ? searchableText.includes(searchTerm2.toLowerCase())
-          : true;
-
-      const matchesMaterial = materialFilter
-        ? slab.material_name === materialFilter
-        : true;
-
-      const matchesFinish = finishFilter ? slab.finish === finishFilter : true;
-
-      return (
-        matchesSearch &&
-        matchesSecondarySearch &&
-        matchesMaterial &&
-        matchesFinish
-      );
-    });
-  }, [
-    slabs,
-    searchTerm,
-    searchTerm2,
-    showSecondarySearch,
-    materialFilter,
-    finishFilter,
-  ]);
 
   return (
     <main className="min-h-screen bg-gray-100 p-4 md:p-8">
@@ -281,48 +269,46 @@ export default function SlabsPage() {
 
         <div className="mb-6 rounded-xl border bg-white p-4 shadow">
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <input
                 type="text"
-                value={searchTerm}
-                onChange={(e) => updateParams({ q: e.target.value })}
+                value={itemDescriptionFilter}
+                onChange={(e) =>
+                  updateParams({ item_description: e.target.value, page: '1' })
+                }
                 className="w-full rounded-lg border px-3 py-2 text-black"
-                placeholder="Search material, finish, status, customer, project, description..."
+                placeholder="Item description contains..."
               />
-
-              <label className="flex items-center gap-2 text-sm font-medium text-black sm:whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  checked={showSecondarySearch}
-                  onChange={(e) =>
-                    updateParams({
-                      showSecondarySearch: e.target.checked,
-                      q2: e.target.checked ? searchTerm2 : null,
-                    })
-                  }
-                />
-                Add second search
-              </label>
+              <input
+                type="text"
+                value={customerNameFilter}
+                onChange={(e) =>
+                  updateParams({ customer_name: e.target.value, page: '1' })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-black"
+                placeholder="Customer name contains..."
+              />
+              <input
+                type="text"
+                value={projectNameFilter}
+                onChange={(e) =>
+                  updateParams({ project_name: e.target.value, page: '1' })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-black"
+                placeholder="Project name contains..."
+              />
             </div>
-
-            {showSecondarySearch && (
-              <input
-                type="text"
-                value={searchTerm2}
-                onChange={(e) => updateParams({ q2: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 text-black"
-                placeholder="Second search term"
-              />
-            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <select
                 value={materialFilter}
-                onChange={(e) => updateParams({ material: e.target.value })}
+                onChange={(e) =>
+                  updateParams({ material: e.target.value, page: '1' })
+                }
                 className="rounded-lg border px-3 py-2 text-black"
               >
                 <option value="">All materials</option>
-                {materialOptions.map((material) => (
+                {MATERIAL_OPTIONS.map((material) => (
                   <option key={material} value={material}>
                     {material}
                   </option>
@@ -331,11 +317,13 @@ export default function SlabsPage() {
 
               <select
                 value={finishFilter}
-                onChange={(e) => updateParams({ finish: e.target.value })}
+                onChange={(e) =>
+                  updateParams({ finish: e.target.value, page: '1' })
+                }
                 className="rounded-lg border px-3 py-2 text-black"
               >
                 <option value="">All finishes</option>
-                {finishOptions.map((finish) => (
+                {FINISH_OPTIONS.map((finish) => (
                   <option key={finish} value={finish}>
                     {finish}
                   </option>
@@ -344,11 +332,13 @@ export default function SlabsPage() {
 
               <select
                 value={statusFilter}
-                onChange={(e) => updateParams({ status: e.target.value })}
+                onChange={(e) =>
+                  updateParams({ status: e.target.value, page: '1' })
+                }
                 className="rounded-lg border px-3 py-2 text-black"
               >
                 <option value="">All statuses</option>
-                {statusOptions.map((status) => (
+                {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -358,7 +348,7 @@ export default function SlabsPage() {
               <select
                 value={warehouseFilter}
                 onChange={(e) =>
-                  updateParams({ warehouse_group: e.target.value })
+                  updateParams({ warehouse_group: e.target.value, page: '1' })
                 }
                 className="rounded-lg border px-3 py-2 text-black"
               >
@@ -371,15 +361,28 @@ export default function SlabsPage() {
               </select>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <input
                 type="number"
                 step="any"
                 min="0"
                 value={minHeight}
-                onChange={(e) => updateParams({ minHeight: e.target.value })}
+                onChange={(e) =>
+                  updateParams({ min_height: e.target.value, page: '1' })
+                }
                 className="rounded-lg border px-3 py-2 text-black"
                 placeholder="Min height"
+              />
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={maxHeight}
+                onChange={(e) =>
+                  updateParams({ max_height: e.target.value, page: '1' })
+                }
+                className="rounded-lg border px-3 py-2 text-black"
+                placeholder="Max height"
               />
 
               <input
@@ -387,9 +390,22 @@ export default function SlabsPage() {
                 step="any"
                 min="0"
                 value={minWidth}
-                onChange={(e) => updateParams({ minWidth: e.target.value })}
+                onChange={(e) =>
+                  updateParams({ min_width: e.target.value, page: '1' })
+                }
                 className="rounded-lg border px-3 py-2 text-black"
                 placeholder="Min width"
+              />
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={maxWidth}
+                onChange={(e) =>
+                  updateParams({ max_width: e.target.value, page: '1' })
+                }
+                className="rounded-lg border px-3 py-2 text-black"
+                placeholder="Max width"
               />
 
               <input
@@ -398,10 +414,21 @@ export default function SlabsPage() {
                 min="0"
                 value={minThickness}
                 onChange={(e) =>
-                  updateParams({ minThickness: e.target.value })
+                  updateParams({ min_thickness: e.target.value, page: '1' })
                 }
                 className="rounded-lg border px-3 py-2 text-black"
                 placeholder="Min thickness"
+              />
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={maxThickness}
+                onChange={(e) =>
+                  updateParams({ max_thickness: e.target.value, page: '1' })
+                }
+                className="rounded-lg border px-3 py-2 text-black"
+                placeholder="Max thickness"
               />
 
               <input
@@ -410,7 +437,7 @@ export default function SlabsPage() {
                 min="0"
                 value={maxPricePerSqft}
                 onChange={(e) =>
-                  updateParams({ maxPricePerSqft: e.target.value })
+                  updateParams({ maxPricePerSqft: e.target.value, page: '1' })
                 }
                 className="rounded-lg border px-3 py-2 text-black"
                 placeholder="Max $ / sf"
@@ -424,7 +451,10 @@ export default function SlabsPage() {
                   type="checkbox"
                   checked={showInactive}
                   onChange={(e) =>
-                    updateParams({ showInactive: e.target.checked })
+                    updateParams({
+                      showInactive: e.target.checked,
+                      page: '1',
+                    })
                   }
                 />
                 Show used / inactive slabs
@@ -439,8 +469,8 @@ export default function SlabsPage() {
             </div>
 
             <p className="text-sm text-gray-700">
-              Showing {filteredSlabs.length} slab
-              {filteredSlabs.length === 1 ? '' : 's'}
+              Showing {slabs.length} of {pagination.total} slab
+              {pagination.total === 1 ? '' : 's'}
             </p>
           </div>
         </div>
@@ -449,13 +479,13 @@ export default function SlabsPage() {
 
         {error && <p className="text-red-600">{error}</p>}
 
-        {!loading && !error && filteredSlabs.length === 0 && (
+        {!loading && !error && slabs.length === 0 && (
           <p className="text-black">No slabs match the current filters.</p>
         )}
 
-        {!loading && !error && filteredSlabs.length > 0 && (
+        {!loading && !error && slabs.length > 0 && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredSlabs.map((slab) => {
+            {slabs.map((slab) => {
               const hasMatches =
                 !!slab.match_group_code &&
                 (matchGroupCounts.get(slab.match_group_code) || 0) > 1;
@@ -521,6 +551,38 @@ export default function SlabsPage() {
                 </Link>
               );
             })}
+          </div>
+        )}
+
+        {!loading && !error && pagination.total_pages > 1 && (
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              onClick={() =>
+                updateParams({
+                  page: String(Math.max(1, pagination.page - 1)),
+                })
+              }
+              disabled={pagination.page <= 1}
+              className="rounded-lg border border-black px-3 py-2 text-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <p className="text-sm text-black">
+              Page {pagination.page} of {pagination.total_pages}
+            </p>
+            <button
+              onClick={() =>
+                updateParams({
+                  page: String(
+                    Math.min(pagination.total_pages, pagination.page + 1)
+                  ),
+                })
+              }
+              disabled={pagination.page >= pagination.total_pages}
+              className="rounded-lg border border-black px-3 py-2 text-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>
